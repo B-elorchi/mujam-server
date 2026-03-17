@@ -34,7 +34,10 @@ export const uploadFile = async (
     );
 
     // Generate URL
-    const endpoint = process.env.MINIO_ENDPOINT || 'http://localhost:9000';
+    let endpoint = process.env.MINIO_ENDPOINT || 'http://localhost:9000';
+    if (endpoint.endsWith('/')) {
+        endpoint = endpoint.slice(0, -1);
+    }
     const url = `${endpoint}/${bucketName}/${key}`;
 
     return { url, key };

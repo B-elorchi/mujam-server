@@ -1,21 +1,46 @@
 import deepgram from '../../config/deepgram'
 import prisma from '../../config/database'
 
-// Deepgram Aura voices
-export type TTSVoice = 'aura-asteria-en' | 'aura-luna-en' | 'aura-stella-en' | 'aura-athena-en' | 'aura-hera-en' | 'aura-orion-en' | 'aura-arcas-en' | 'aura-perseus-en' | 'aura-angus-en' | 'aura-orpheus-en' | 'aura-helios-en' | 'aura-zeus-en'
+// Deepgram Aura voices (English)
+export type TTSVoiceEN = 'aura-asteria-en' | 'aura-luna-en' | 'aura-stella-en' | 'aura-athena-en' | 'aura-hera-en' | 'aura-orion-en' | 'aura-arcas-en' | 'aura-perseus-en' | 'aura-angus-en' | 'aura-orpheus-en' | 'aura-helios-en' | 'aura-zeus-en'
+
+// Deepgram Aura voices (Arabic)
+export type TTSVoiceAR = 'aura-hera-ar' | 'aura-athena-ar'
+
+export type TTSVoice = TTSVoiceEN | TTSVoiceAR
 
 export interface TTSOptions {
     voice?: TTSVoice
     speed?: number
     model?: string
+    language?: 'en' | 'ar'
+}
+
+// Detect language from text (simple heuristic)
+function detectLanguage(text: string): 'en' | 'ar' {
+    // Check if text contains Arabic characters
+    const arabicPattern = /[\u0600-\u06FF]/
+    return arabicPattern.test(text) ? 'ar' : 'en'
 }
 
 export async function textToSpeech(
     text: string,
     speed: 'normal' | 'slow' = 'normal',
-    userId?: string
+    userId?: string,
+    language?: 'en' | 'ar'
 ): Promise<Buffer> {
-    const voice = (process.env.AI_TTS_VOICE as TTSVoice) || 'aura-asteria-en'
+    // Auto-detect language if not provided
+    const detectedLang = language || detectLanguage(text)
+    
+    // Select appropriate voice based on language
+    let voice: TTSVoice
+    if (detectedLang === 'ar') {
+        voice = (process.env.AI_TTS_VOICE_AR as TTSVoiceAR) || 'aura-hera-ar'
+    } else {
+        voice = (process.env.AI_TTS_VOICE_EN as TTSVoiceEN) || 'aura-asteria-en'
+    }
+
+    console.log(`TTS: Generating audio for ${detectedLang} text with voice ${voice}`)
 
     try {
         const response = await deepgram.speak.request(

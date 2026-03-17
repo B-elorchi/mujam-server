@@ -31,7 +31,7 @@ export const authController = {
           passwordHash,
           role: 'STUDENT',
           plan: 'FREE',
-          currentLevel: currentLevel || 1,
+          currentLevel: currentLevel || 0,
           placementScore: placementScore || 0,
         },
       });
@@ -277,7 +277,7 @@ export const authController = {
       }
 
       // Send welcome email (non-blocking)
-      sendWelcomeEmail(email, user.name).catch(err => 
+      sendWelcomeEmail(email, user.name).catch(err =>
         console.error('Failed to send welcome email:', err)
       );
 
@@ -380,7 +380,7 @@ export const authController = {
       // Use first frontend URL if multiple are configured
       const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:8080').split(',')[0].trim();
       const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
-      
+
       try {
         await sendPasswordResetEmail(email, resetLink);
       } catch (emailError) {
