@@ -2,11 +2,12 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { checkLevelCompletion } from '../utils/progress.utils';
+import { trackLearningActivity } from '../utils/gamification';
 
 export const gameController = {
   getGamesByLevel: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { levelId } = req.params;
+      const levelId = req.params.levelId as string;
       const levelIdNum = parseInt(levelId);
 
       const user = await prisma.user.findUnique({
@@ -69,7 +70,7 @@ export const gameController = {
 
   getGame: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
 
       const game = await prisma.game.findUnique({
         where: { id },
@@ -104,7 +105,8 @@ export const gameController = {
         return errorResponse(res, 'Premium subscription required', 403);
       }
 
-      const questionsWithoutAnswers = game.questions.map((q: any) => ({
+      const gameAny = game as any;
+      const questionsWithoutAnswers = gameAny.questions.map((q: any) => ({
         id: q.id,
         questionData: q.questionData,
         type: q.type,
@@ -126,7 +128,7 @@ export const gameController = {
 
   submitAnswers: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
       const { answers } = req.body as { answers: { questionId: string; answer: string }[] };
 
       const game = await prisma.game.findUnique({
@@ -141,16 +143,17 @@ export const gameController = {
       }
 
       let correctCount = 0;
-      const questionMap = new Map(game.questions.map((q: any) => [q.id, q]));
+      const gameAny = game as any;
+      const questionMap = new Map(gameAny.questions.map((q: any) => [q.id, q]));
 
       answers.forEach((answer) => {
-        const question = questionMap.get(answer.questionId);
+        const question = questionMap.get(answer.questionId) as any;
         if (question && question.correctAnswer.toLowerCase() === answer.answer.toLowerCase().trim()) {
           correctCount++;
         }
       });
 
-      const score = Math.round((correctCount / game.questions.length) * 100);
+      const score = Math.round((correctCount / gameAny.questions.length) * 100);
       const passed = score >= 70;
 
       const progress = await prisma.userGameProgress.upsert({
@@ -211,24 +214,22 @@ export const gameController = {
 
         // Check if entire level is completed
         await checkLevelCompletion(req.userId!, game.levelId);
+
+        // Track learning activity for gamification (streak, points, achievements)
+        await trackLearningActivity(req.userId!, 'game');
       }
 
-      return successResponse(res, {
-        score,
-        passed,
-        correctCount,
-        totalQuestions: game.questions.length,
-        attempts: progress.attempts,
+      attempts: progress.attempts,
       });
-    } catch (error) {
-      console.error('Submit answers error:', error);
-      return errorResponse(res, 'Server error', 500);
-    }
-  },
+  } catch(error) {
+    console.error('Submit answers error:', error);
+    return errorResponse(res, 'Server error', 500);
+  }
+},
 
   getProgress: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
 
       const progress = await prisma.userGameProgress.findUnique({
         where: {

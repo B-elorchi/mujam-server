@@ -11,6 +11,7 @@ import {
   analyzeSession,
   evaluateDifficulty,
 } from '../services/ai';
+import { trackLearningActivity } from '../utils/gamification';
 
 export const aiController = {
   getScenarios: async (req: Request, res: Response): Promise<Response> => {
@@ -226,6 +227,10 @@ export const aiController = {
     try {
       const { id } = req.params;
       const summary = await analyzeSession(id as string, (req as any).userId!);
+
+      // Track learning activity for gamification
+      await trackLearningActivity((req as any).userId!, 'ai_session');
+
       return successResponse(res, summary, 'Session ended and analyzed');
     } catch (error) {
       console.error('End session error:', error);

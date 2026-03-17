@@ -3,6 +3,7 @@ import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { transcribeAudio } from '../services/ai/stt.service';
 import { checkLevelCompletion } from '../utils/progress.utils';
+import { trackLearningActivity } from '../utils/gamification';
 
 export const shadowingController = {
   getStories: async (req: Request, res: Response): Promise<Response> => {
@@ -231,7 +232,18 @@ export const shadowingController = {
             where: { id: completion.id },
             data: { shadowingDone: true },
           });
+        } else {
+          await prisma.userLevelCompletion.create({
+            data: {
+              userId: req.userId!,
+              levelId: story.levelId,
+              shadowingDone: true,
+            },
+          });
         }
+
+        // Track learning activity for gamification (streak, points, achievements)
+        await trackLearningActivity(req.userId!, 'shadowing');
       }
 
       return successResponse(res, progress, 'Story completed');

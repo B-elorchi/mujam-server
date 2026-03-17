@@ -2,12 +2,13 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { checkLevelCompletion } from '../utils/progress.utils';
+import { trackLearningActivity } from '../utils/gamification';
 
 export const quizController = {
   getQuiz: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
-      const levelId = parseInt(id as string);
+      const id = req.params.id as string;
+      const levelId = parseInt(id);
 
       const user = await prisma.user.findUnique({
         where: { id: req.userId },
@@ -53,7 +54,8 @@ export const quizController = {
         },
       });
 
-      const questionsWithoutAnswers = quiz.questions.map((q: any) => ({
+      const quizAny = quiz as any;
+      const questionsWithoutAnswers = quizAny.questions.map((q: any) => ({
         id: q.id,
         questionData: q.questionData,
         type: q.type,
@@ -78,7 +80,7 @@ export const quizController = {
 
   submitQuiz: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
       const { answers } = req.body as { answers: { questionId: string; answer: string }[] };
 
       const quiz = await prisma.levelQuiz.findUnique({
@@ -107,8 +109,9 @@ export const quizController = {
       let earnedPoints = 0;
       const questionMap = new Map(quiz.questions.map((q: any) => [q.id, q]));
 
+      const quizAny = quiz as any;
       const gradedAnswers = answers.map((answer) => {
-        const question = questionMap.get(answer.questionId);
+        const question = questionMap.get(answer.questionId) as any;
         totalPoints += question?.points || 10;
         const isCorrect = question && question.correctAnswer.toLowerCase() === answer.answer.toLowerCase().trim();
         if (isCorrect) {
@@ -164,6 +167,9 @@ export const quizController = {
 
         // Check if entire level is completed
         levelCompleted = await checkLevelCompletion(req.userId!, quiz.levelId);
+
+        // Track learning activity for gamification (streak, points, achievements)
+        await trackLearningActivity(req.userId!, 'quiz');
 
         if (levelCompleted) {
           const nextLevel = await prisma.level.findFirst({
