@@ -6,65 +6,105 @@ export const leaderboardController = {
   getLeaderboard: async (req: Request, res: Response): Promise<Response> => {
     try {
       const period = (req.query.period as string) || 'weekly';
-      
-      let periodKey: string;
+
       const now = new Date();
-      
+      let startDate: Date | undefined;
+
       if (period === 'weekly') {
-        const weekNum = Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000));
-        periodKey = `${now.getFullYear()}-W${weekNum}`;
+        // Start of current week (Sunday)
+        startDate = new Date(now);
+        startDate.setDate(now.getDate() - now.getDay());
+        startDate.setHours(0, 0, 0, 0);
       } else if (period === 'monthly') {
-        periodKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      } else {
-        periodKey = 'all-time';
+        // Start of current month
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+        startDate.setHours(0, 0, 0, 0);
       }
 
-      const userPoints = await prisma.user.findMany({
-        where: { isActive: true },
+      // For all-time, use the stored points field
+      // For weekly/monthly, calculate from activity in that period
+      const users = await prisma.user.findMany({
+        where: {
+          isActive: true,
+          role: 'STUDENT'
+        },
         select: {
           id: true,
           name: true,
           avatarUrl: true,
           currentLevel: true,
-          _count: {
-            select: {
-              sentenceProgress: { where: { completed: true } },
-              gameProgress: { where: { completed: true } },
-              aiSessions: true,
+          sentenceProgress: {
+            where: {
+              completed: true,
+              ...(startDate ? { completedAt: { gte: startDate } } : {})
             },
+            select: { id: true }
+          },
+          gameProgress: {
+            where: {
+              completed: true,
+              ...(startDate ? { completedAt: { gte: startDate } } : {})
+            },
+            select: { id: true }
+          },
+          aiSessions: {
+            where: {
+              ...(startDate ? { startedAt: { gte: startDate } } : {})
+            },
+            select: { id: true }
           },
           streak: { select: { currentStreak: true } },
         },
       });
 
-      const calculatedPoints = userPoints.map((user) => {
-        const sentences = user._count.sentenceProgress * 2;
-        const games = user._count.gameProgress * 5;
-        const ai = user._count.aiSessions * 10;
-        const streak = (user.streak?.currentStreak || 0) * 3;
+      const calculatedPoints = users.map((user) => {
+        const sentences = (user.sentenceProgress?.length || 0) * 2;
+        const games = (user.gameProgress?.length || 0) * 5;
+        const ai = (user.aiSessions?.length || 0) * 10;
+        const streak = ((user.streak?.currentStreak || 0) * 3);
+        const points = sentences + games + ai + streak;
+
         return {
           userId: user.id,
           name: user.name,
           avatarUrl: user.avatarUrl,
           currentLevel: user.currentLevel,
-          points: sentences + games + ai + streak,
+          points: points,
         };
       });
 
       calculatedPoints.sort((a, b) => b.points - a.points);
 
-      const leaderboard = calculatedPoints.slice(0, 50).map((entry, index) => ({
+      // Filter out users with 0 points if not all-time
+      const filteredResults = period === 'all-time'
+        ? calculatedPoints
+        : calculatedPoints.filter(u => u.points > 0);
+
+      const leaderboard = filteredResults.slice(0, 50).map((entry, index) => ({
         rank: index + 1,
         ...entry,
       }));
 
-      const userRank = leaderboard.findIndex((e) => e.userId === req.userId);
+      const userRankIndex = leaderboard.findIndex((e) => e.userId === req.userId);
+      const userRank = userRankIndex >= 0 ? userRankIndex + 1 : null;
+
+      // If user is not in top 50, find their actual rank in the full list
+      let actualUserRank = userRank;
+      let actualUserPoints = userRankIndex >= 0 ? leaderboard[userRankIndex].points : 0;
+
+      if (!userRank) {
+        const userInFullList = filteredResults.findIndex(u => u.userId === req.userId);
+        if (userInFullList >= 0) {
+          actualUserRank = userInFullList + 1;
+          actualUserPoints = filteredResults[userInFullList].points;
+        }
+      }
 
       return successResponse(res, {
         period,
         leaderboard,
-        userRank: userRank >= 0 ? userRank + 1 : null,
-        userPoints: userRank >= 0 ? leaderboard[userRank].points : 0,
+        userRank: actualUserRank,
+        userPoints: actualUserPoints,
       });
     } catch (error) {
       console.error('Get leaderboard error:', error);

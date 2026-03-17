@@ -2,7 +2,7 @@
 // Complete seed file for معجم platform
 // Contains all sentences extracted from the 6 official PDF booklets
 
-import { PrismaClient, GameType, UserRole, SubscriptionPlan } from '@prisma/client'
+import { PrismaClient, GameType, UserRole, SubscriptionPlan, Difficulty } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -795,78 +795,94 @@ async function seedQuizzes() {
 async function seedGames() {
   console.log('🎮 Seeding games...')
 
+  await prisma.gameQuestion.deleteMany({})
   await prisma.game.deleteMany({})
 
-  for (let levelId = 1; levelId <= 6; levelId++) {
-    // 1. Arrange sentences game
-    const game1 = await prisma.game.create({
-      data: {
-        levelId,
-        type: 'DRAG_DROP',
-        titleAr: 'رتّب الجملة',
-        orderIndex: 1,
-      }
+  for (let levelId = 1; levelId <= 7; levelId++) {
+    const sentences = await prisma.sentence.findMany({
+      where: { levelId },
+      orderBy: { orderIndex: 'asc' }
     })
 
-    await prisma.gameQuestion.create({
-      data: {
-        gameId: game1.id,
-        questionData: {
-          sentenceEn: 'How are you today?',
-          words: ['How', 'are', 'you', 'today', '?'],
-          correctOrder: ['How', 'are', 'you', 'today', '?'],
-        },
-        correctAnswer: JSON.stringify(['How', 'are', 'you', 'today', '?']),
-        orderIndex: 1,
-      }
-    })
+    if (sentences.length === 0) continue
 
-    // 2. Choice game
-    const game2 = await prisma.game.create({
-      data: {
-        levelId,
-        type: 'MULTIPLE_CHOICE',
-        titleAr: 'اختر الصحيح',
-        orderIndex: 2,
-      }
-    })
+    const difficulties = [
+      { type: Difficulty.EASY, titleAr: 'مستوى سهل', index: 1 },
+      { type: Difficulty.MEDIUM, titleAr: 'مستوى متوسط', index: 2 },
+      { type: Difficulty.HARD, titleAr: 'مستوى صعب', index: 3 },
+    ]
 
-    await prisma.gameQuestion.create({
-      data: {
-        gameId: game2.id,
-        questionData: {
-          question: 'How do you say "Good morning" in Arabic?',
-          options: ['صباح الخير', 'مساء الخير', 'شكراً'],
-        },
-        correctAnswer: 'صباح الخير',
-        orderIndex: 1,
-      }
-    })
+    for (const diff of difficulties) {
+      const game = await prisma.game.create({
+        data: {
+          levelId,
+          type: GameType.MIXED,
+          titleAr: `${diff.titleAr} - المستوى ${levelId}`,
+          difficulty: diff.type,
+          orderIndex: diff.index,
+        }
+      })
 
-    // 3. Fill in the blank
-    const game3 = await prisma.game.create({
-      data: {
-        levelId,
-        type: 'FILL_BLANK',
-        titleAr: 'املأ الفراغ',
-        orderIndex: 3,
-      }
-    })
+      // Generate 20+ mixed questions
+      // We Cycle through sentences to reach at least 20
+      for (let i = 0; i < 20; i++) {
+        const sentence = sentences[i % sentences.length]
+        const questionType = [GameType.DRAG_DROP, GameType.MULTIPLE_CHOICE, GameType.FILL_BLANK][i % 3]
 
-    await prisma.gameQuestion.create({
-      data: {
-        gameId: game3.id,
-        questionData: {
-          question: 'Good ___ !',
-          hint: 'morning',
-        },
-        correctAnswer: 'morning',
-        orderIndex: 1,
+        let questionData: any = {}
+        let correctAnswer = ''
+
+        if (questionType === GameType.DRAG_DROP) {
+          const words = sentence.textEn.split(' ')
+          questionData = {
+            sentenceEn: sentence.textEn,
+            words: [...words].sort(() => Math.random() - 0.5),
+            correctOrder: words,
+          }
+          correctAnswer = JSON.stringify(words)
+        } else if (questionType === GameType.MULTIPLE_CHOICE) {
+          // Find distractor sentences from the same level
+          const distractors = sentences
+            .filter(s => s.id !== sentence.id)
+            .sort(() => Math.random() - 0.5)
+            .slice(0, 3)
+            .map(s => s.textAr)
+
+          const options = [sentence.textAr, ...distractors].sort(() => Math.random() - 0.5)
+
+          questionData = {
+            question: `How do you say "${sentence.textEn}" in Arabic?`,
+            options,
+          }
+          correctAnswer = sentence.textAr
+        } else if (questionType === GameType.FILL_BLANK) {
+          const words = sentence.textEn.split(' ')
+          const blankIndex = Math.floor(Math.random() * words.length)
+          const blankWord = words[blankIndex]
+          words[blankIndex] = '___'
+
+          questionData = {
+            question: words.join(' '),
+            hint: sentence.textAr,
+          }
+          correctAnswer = blankWord
+        }
+
+        await prisma.gameQuestion.create({
+          data: {
+            gameId: game.id,
+            sentenceId: sentence.id,
+            type: questionType,
+            questionData,
+            correctAnswer,
+            orderIndex: i + 1,
+          }
+        })
       }
-    })
+    }
   }
 
-  console.log('  ✓ Games seeded for 6 levels')
+  console.log('  ✓ Games seeded with 20 mixed questions per difficulty for all levels')
 }
 
 // ─────────────────────────────────────────

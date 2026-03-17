@@ -30,6 +30,13 @@ enum GameType {
   MULTIPLE_CHOICE
   AUDIO_MATCH
   FILL_BLANK
+  MIXED
+}
+
+enum Difficulty {
+  EASY
+  MEDIUM
+  HARD
 }
 
 enum NotificationType {
@@ -266,6 +273,7 @@ model Game {
   levelId      Int
   type         GameType
   titleAr      String
+  difficulty   Difficulty @default(EASY)
   orderIndex   Int
   isActive     Boolean    @default(true)
   createdAt    DateTime   @default(now())
@@ -281,6 +289,7 @@ model GameQuestion {
   id             String   @id @default(uuid())
   gameId         String
   sentenceId     String?
+  type           GameType?
   questionData   Json
   correctAnswer  String
   orderIndex     Int
