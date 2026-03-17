@@ -32,17 +32,26 @@ export async function transcribeAudio(
     }
 
     // Use Deepgram for speech-to-text transcription
-    // Use appropriate model based on language
+    // Use Nova-3 model which supports both Arabic and English
     const detectedLanguage = language || 'en'
+    
+    console.log('STT Language Detection:', {
+        providedLanguage: language,
+        detectedLanguage,
+        willUseModel: 'nova-3'
+    })
+    
     const transcriptionOptions: any = {
-        // nova-2 supports English, but Arabic needs 'general' model
-        model: detectedLanguage === 'ar' ? 'general' : 'nova-2',
+        // Nova-3 supports both Arabic and English
+        model: 'nova-3',
         language: detectedLanguage,
         punctuate: true,
         smart_format: true,
         diarize: false,
         utterances: false,
     }
+    
+    console.log('STT Transcription Options:', transcriptionOptions)
 
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
         buffer,

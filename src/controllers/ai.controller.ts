@@ -144,10 +144,14 @@ export const aiController = {
       let userText = req.body.text;
       let durationSeconds = 0;
 
+      // Detect language from scenario (scenarios are in Arabic, so use 'ar')
+      // If no scenario, default to Arabic for AI conversations
+      const language = 'ar';
+
       // 1. Transcribe audio if provided
       if (req.file) {
         sendEvent('status', { step: 'transcribing' });
-        const sttResult = await transcribeAudio((req as any).userId!, req.file.buffer, req.file.mimetype, 'ar');
+        const sttResult = await transcribeAudio((req as any).userId!, req.file.buffer, req.file.mimetype, language);
         userText = sttResult.transcript;
         durationSeconds = sttResult.duration;
         sendEvent('transcript', { text: userText });
