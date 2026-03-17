@@ -32,7 +32,7 @@ const app: Application = express();
 const PORT = process.env.PORT || 4000;
 
 app.use(helmet());
-const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',').map((o) => o.trim());
+const allowedOrigins = (process.env.FRONTEND_URL || 'https://app.moajam-sa.com,http://localhost:3000,http://localhost:8080').split(',').map((o) => o.trim());
 app.use(cors({
   origin: (origin, cb) => {
     if (!origin || allowedOrigins.includes(origin)) return cb(null, origin || allowedOrigins[0]);
