@@ -1,0 +1,193 @@
+import { Request, Response } from 'express';
+import prisma from '../config/database';
+import { successResponse, errorResponse } from '../utils/apiResponse';
+
+// Helper to shuffle array
+const shuffleArray = <T>(array: T[]): T[] => {
+  const shuffled = [...array];
+  for (let i = shuffled.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+  }
+  return shuffled;
+};
+
+export const placementController = {
+  getQuestions: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      // Get 2 active questions per level (14 total)
+      const questions = [];
+      for (let level = 1; level <= 7; level++) {
+        const levelQuestions = await prisma.placementQuestion.findMany({
+          where: { targetLevel: level, isActive: true },
+          take: 2,
+          orderBy: { orderIndex: 'asc' },
+        });
+        questions.push(...levelQuestions);
+      }
+
+      // Shuffle questions and shuffle options within each question
+      const shuffledQuestions = shuffleArray(questions).map((q) => ({
+        id: q.id,
+        sentenceEn: q.sentenceEn,
+        options: shuffleArray(q.options as string[]),
+        // DO NOT include: correctAr, targetLevel
+      }));
+
+      return successResponse(res, {
+        questions: shuffledQuestions,
+        totalQuestions: shuffledQuestions.length,
+        timeLimit: null,
+      });
+    } catch (error) {
+      console.error('Get questions error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  submitTest: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const { answers } = req.body;
+
+      // Check if user already took the test or has currentLevel > 0
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+      });
+
+      if (!user) {
+        return errorResponse(res, 'User not found', 404);
+      }
+
+      if (user.currentLevel > 0) {
+        return errorResponse(res, 'لقد أكملت اختبار تحديد المستوى بالفعل', 400);
+      }
+
+      const existingTest = await prisma.placementTest.findFirst({
+        where: { userId: req.userId },
+      });
+
+      if (existingTest) {
+        return errorResponse(res, 'لقد أكملت اختبار تحديد المستوى بالفعل', 400);
+      }
+
+      // Get all questions with correct answers
+      const questionIds = answers.map((a: any) => a.questionId);
+      const questions = await prisma.placementQuestion.findMany({
+        where: { id: { in: questionIds } },
+      });
+
+      const questionMap = new Map(questions.map((q) => [q.id, q]));
+
+      // Score per level
+      const levelScores: Record<number, { correct: number; total: number }> = {};
+      for (let i = 1; i <= 7; i++) {
+        levelScores[i] = { correct: 0, total: 0 };
+      }
+
+      let totalCorrect = 0;
+      const gradedAnswers = [];
+
+      for (const answer of answers) {
+        const question = questionMap.get(answer.questionId);
+        if (!question) continue;
+
+        const isCorrect = answer.selectedOption === question.correctAr;
+        if (isCorrect) {
+          totalCorrect++;
+          levelScores[question.targetLevel].correct++;
+        }
+        levelScores[question.targetLevel].total++;
+        gradedAnswers.push({ questionId: question.id, isCorrect });
+      }
+
+      // Determine highest level where student got >= 50% correct
+      let assignedLevel = 1;
+      for (let level = 7; level >= 1; level--) {
+        const levelData = levelScores[level];
+        if (levelData.total > 0 && levelData.correct >= levelData.total * 0.5) {
+          assignedLevel = level;
+          break;
+        }
+      }
+
+      const scorePercent = Math.round((totalCorrect / answers.length) * 100);
+
+      // Save test result
+      await prisma.placementTest.create({
+        data: {
+          userId: req.userId!,
+          score: scorePercent,
+          assignedLevel,
+          answers: gradedAnswers,
+        },
+      });
+
+      // Update user level
+      await prisma.user.update({
+        where: { id: req.userId },
+        data: {
+          currentLevel: assignedLevel,
+          placementScore: scorePercent,
+        },
+      });
+
+      // Mark all levels BELOW assigned as "already known"
+      for (let level = 1; level < assignedLevel; level++) {
+        await prisma.userLevelCompletion.upsert({
+          where: {
+            userId_levelId: {
+              userId: req.userId!,
+              levelId: level,
+            },
+          },
+          create: {
+            userId: req.userId!,
+            levelId: level,
+            completed: true,
+            completedAt: new Date(),
+            quizPassed: true,
+          },
+          update: {
+            completed: true,
+            completedAt: new Date(),
+            quizPassed: true,
+          },
+        });
+      }
+
+      return successResponse(res, {
+        score: scorePercent,
+        assignedLevel,
+        correctAnswers: totalCorrect,
+        totalQuestions: answers.length,
+        message: `رائع! مستواك هو المستوى ${assignedLevel}`,
+      });
+    } catch (error) {
+      console.error('Submit test error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  getResult: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const test = await prisma.placementTest.findFirst({
+        where: { userId: req.userId },
+        orderBy: { takenAt: 'desc' },
+      });
+
+      if (!test) {
+        return successResponse(res, { hasTakenTest: false });
+      }
+
+      return successResponse(res, {
+        hasTakenTest: true,
+        score: test.score,
+        assignedLevel: test.assignedLevel,
+        takenAt: test.takenAt,
+      });
+    } catch (error) {
+      console.error('Get result error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+};

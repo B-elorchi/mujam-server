@@ -1,0 +1,352 @@
+import { PrismaClient, UserRole } from '@prisma/client';
+import { hashPassword } from '../src/utils/hash';
+
+const prisma = new PrismaClient();
+
+async function main() {
+  console.log('Seeding database...');
+
+  // Create 7 Levels (following STORIES_PART_2.md spec)
+  const levels = [
+    { id: 1, titleAr: 'السفر والمواصلات', titleEn: 'Travel & Transportation', descriptionAr: 'تعلم أهم الجمل التي تحتاجها أثناء السفر', icon: '✈️', orderIndex: 1, isFree: true },
+    { id: 2, titleAr: 'المستشفى', titleEn: 'Hospital', descriptionAr: 'جمل طبية أساسية للتواصل في المستشفى', icon: '🏥', orderIndex: 2, isFree: true },
+    { id: 3, titleAr: 'العمل والدراسة', titleEn: 'Work & Study', descriptionAr: 'مصطلحات العمل والدراسة اليومية', icon: '💼', orderIndex: 3, isFree: false },
+    { id: 4, titleAr: 'المطعم', titleEn: 'Restaurant', descriptionAr: 'كيفية الطلب والتواصل في المطاعم', icon: '🍽️', orderIndex: 4, isFree: false },
+    { id: 5, titleAr: 'التسوق', titleEn: 'Shopping', descriptionAr: 'جمل التسوق والشراء', icon: '🛒', orderIndex: 5, isFree: false },
+    { id: 6, titleAr: 'التعارف', titleEn: 'Introductions', descriptionAr: 'التعريف بالنفس والتعارف على الآخرين', icon: '🤝', orderIndex: 6, isFree: false },
+    { id: 7, titleAr: 'العلاقات', titleEn: 'Relationships', descriptionAr: 'التعبير عن المشاعر والعلاقات', icon: '❤️', orderIndex: 7, isFree: false },
+  ];
+
+  for (const level of levels) {
+    await prisma.level.upsert({
+      where: { id: level.id },
+      update: level,
+      create: level,
+    });
+  }
+
+  console.log('Created 7 levels');
+
+  // Create sample sentences for Level 1
+  const sentences = [
+    { levelId: 1, textEn: 'Hello, how are you?', textAr: 'مرحباً، كيف حالك؟', orderIndex: 1 },
+    { levelId: 1, textEn: 'My name is Sarah.', textAr: 'اسمي سارة.', orderIndex: 2 },
+    { levelId: 1, textEn: 'I am from Morocco.', textAr: 'أنا من المغرب.', orderIndex: 3 },
+    { levelId: 1, textEn: 'Nice to meet you.', textAr: 'تشرفنا.', orderIndex: 4 },
+    { levelId: 1, textEn: 'Good morning.', textAr: 'صباح الخير.', orderIndex: 5 },
+    { levelId: 1, textEn: 'Good night.', textAr: 'تصبح على خير.', orderIndex: 6 },
+    { levelId: 1, textEn: 'Thank you very much.', textAr: 'شكراً جزيلاً.', orderIndex: 7 },
+    { levelId: 1, textEn: 'You are welcome.', textAr: 'عفواً.', orderIndex: 8 },
+    { levelId: 1, textEn: 'Please help me.', textAr: 'من فضلك ساعدني.', orderIndex: 9 },
+    { levelId: 1, textEn: 'Where is the bathroom?', textAr: 'أين الحمام؟', orderIndex: 10 },
+    { levelId: 2, textEn: 'I would like a cup of coffee.', textAr: 'أريد فنجان قهوة.', orderIndex: 1 },
+    { levelId: 2, textEn: 'What time is it?', textAr: 'كم الساعة؟', orderIndex: 2 },
+    { levelId: 2, textEn: 'I am studying English.', textAr: 'أدرس اللغة الإنجليزية.', orderIndex: 3 },
+    { levelId: 2, textEn: 'She works at a hospital.', textAr: 'تعمل في مستشفى.', orderIndex: 4 },
+    { levelId: 2, textEn: 'They live in Casablanca.', textAr: 'يعيشون في الدار البيضاء.', orderIndex: 5 },
+  ];
+
+  for (const sentence of sentences) {
+    await prisma.sentence.create({
+      data: sentence,
+    });
+  }
+
+  console.log('Created sample sentences');
+
+  // Create Placement Questions
+  const placementQuestions = [
+    { sentenceEn: 'Hello', correctAr: 'مرحباً', options: ['مرحباً', 'وداعاً', 'سلام', 'نعم'], targetLevel: 1, orderIndex: 1 },
+    { sentenceEn: 'Thank you', correctAr: 'شكراً', options: ['شكراً', 'مرحباً', 'مع السلامة', 'أرجوك'], targetLevel: 1, orderIndex: 2 },
+    { sentenceEn: 'Good morning', correctAr: 'صباح الخير', options: ['مساء الخير', 'صباح الخير', 'تصبح على خير', 'ليلاً'], targetLevel: 1, orderIndex: 3 },
+    { sentenceEn: 'My name is', correctAr: 'اسمي', options: ['أنا', 'اسمي', 'هل هو', 'هو'], targetLevel: 1, orderIndex: 4 },
+    { sentenceEn: 'How are you?', correctAr: 'كيف حالك؟', options: ['ما اسمك؟', 'من أين أنت؟', 'كيف حالك؟', 'ماذا تفعل؟'], targetLevel: 1, orderIndex: 5 },
+    { sentenceEn: 'I am from Morocco', correctAr: 'أنا من المغرب', options: ['أذهب للمغرب', 'أنا من المغرب', 'أسكن في المغرب', 'أحب المغرب'], targetLevel: 2, orderIndex: 6 },
+    { sentenceEn: 'What time is it?', correctAr: 'كم الساعة؟', options: ['كم الساعة؟', 'ما التاريخ؟', 'أي يوم؟', 'كم سنة؟'], targetLevel: 2, orderIndex: 7 },
+    { sentenceEn: 'I would like coffee', correctAr: 'أريد قهوة', options: ['أشرب قهوة', 'أريد قهوة', 'أحب قهوة', 'القهوة'], targetLevel: 2, orderIndex: 8 },
+    { sentenceEn: 'She works at hospital', correctAr: 'تعمل في مستشفى', options: ['تدرس في مستشفى', 'تسكن في مستشفى', 'تعمل في مستشفى', 'تريد مستشفى'], targetLevel: 2, orderIndex: 9 },
+    { sentenceEn: 'They live in Rabat', correctAr: 'يعيشون في الرباط', options: ['يسافرون للرباط', 'يعملون في الرباط', 'يعيشون في الرباط', 'يحبون الرباط'], targetLevel: 2, orderIndex: 10 },
+  ];
+
+  for (const q of placementQuestions) {
+    await prisma.placementQuestion.create({ data: q });
+  }
+
+  console.log('Created placement questions');
+
+  // Create Achievements
+  const achievements = [
+    { key: 'first_sentence', nameAr: 'أول خطوة', descAr: 'أتمم أول جملة', icon: '🎯', condition: { sentences: 1 } },
+    { key: 'week_streak', nameAr: 'أسبوع متواصل', descAr: '7 أيام متتالية', icon: '🔥', condition: { streak: 7 } },
+    { key: 'hundred_sentences', nameAr: '١٠٠ جملة', descAr: 'أتمم 100 جملة', icon: '📚', condition: { sentences: 100 } },
+    { key: 'level_1_complete', nameAr: 'إتمام المستوى ١', descAr: 'أتمم المستوى الأول', icon: '⭐', condition: { level: 1 } },
+    { key: 'first_ai_session', nameAr: 'أول محادثة', descAr: 'ابدأ أول محادثة مع الذكاء الاصطناعي', icon: '🤖', condition: { aiSessions: 1 } },
+    { key: 'month_streak', nameAr: 'شهر متواصل', descAr: '30 يوم متتالي', icon: '🌟', condition: { streak: 30 } },
+    { key: 'all_levels', nameAr: 'بطل معجَم', descAr: 'أتمم جميع المستويات', icon: '🏆', condition: { levels: 7 } },
+  ];
+
+  for (const achievement of achievements) {
+    await prisma.achievement.upsert({
+      where: { key: achievement.key },
+      update: achievement,
+      create: achievement,
+    });
+  }
+
+  console.log('Created achievements');
+
+  // Create AI Settings
+  await prisma.aISettings.upsert({
+    where: { id: 'singleton' },
+    update: {
+      systemPrompt: 'You are an English language tutor helping Arabic speakers learn English. Correct mistakes gently and explain in Arabic when needed. Keep conversations engaging and relevant to everyday situations.',
+    },
+    create: {
+      id: 'singleton',
+      gptModel: 'gpt-4o-mini',
+      sttModel: 'whisper-1',
+      ttsModel: 'tts-1',
+      ttsVoice: 'nova',
+      temperature: 0.7,
+      systemPrompt: 'You are an English language tutor helping Arabic speakers learn English. Correct mistakes gently and explain in Arabic when needed. Keep conversations engaging and relevant to everyday situations.',
+      correctionStyle: 'balanced',
+      formalityLevel: 60,
+      monthlyBudgetUsd: 50,
+    },
+  });
+
+  console.log('Created AI settings');
+
+  // Create AI Scenarios
+  const scenarios = [
+    // Level 1
+    { levelId: 1, nameAr: 'في المطار', descriptionAr: 'التحدث مع موظف الجوازات', systemPrompt: 'You are an immigration officer at an airport. Be polite but professional. Use very simple English.', openingMessage: 'Hello. May I see your passport and visa, please?' },
+    { levelId: 1, nameAr: 'تحية صديق', descriptionAr: 'لقاء صديق جديد والتعريف بنفسك', systemPrompt: 'You are a student meeting a new classmate. Be friendly. Use simple greetings.', openingMessage: 'Hi there! I am John. What is your name?' },
+    { levelId: 1, nameAr: 'طلب قهوة', descriptionAr: 'كيفية طلب مشروب في المقهى', systemPrompt: 'You are a barista at a coffee shop. Be helpful. List simple coffee options.', openingMessage: 'Welcome to Mujam Cafe. What would you like to drink today?' },
+    // Level 2
+    { levelId: 2, nameAr: 'في السوبر ماركت', descriptionAr: 'البحث عن منتجات معينة', systemPrompt: 'You are a supermarket assistant. Help the customer find items.', openingMessage: 'Hello! Are you looking for something specific today?' },
+    { levelId: 2, nameAr: 'السؤال عن الاتجاهات', descriptionAr: 'كيفية الوصول إلى مكان معين', systemPrompt: 'You are a local person giving directions. Use simple directional language.', openingMessage: 'Excuse me, are you lost? Can I help you find your way?' },
+    // ... adding more for other levels
+    { levelId: 3, nameAr: 'مقابلة عمل', descriptionAr: 'التحدث عن مهاراتك', systemPrompt: 'You are an HR manager. Ask about the candidate\'s experience.', openingMessage: 'Thank you for coming today. Tell me about your previous work experience.' },
+    { levelId: 4, nameAr: 'التعبير عن الرأي', descriptionAr: 'نقاش حول موضوع عام', systemPrompt: 'You are a friend discussing hobbies. Ask for the student\'s opinion.', openingMessage: 'I think reading is better than watching movies. What do you think?' },
+    { levelId: 5, nameAr: 'نقاش علمي', descriptionAr: 'التحدث عن التغير المناخي', systemPrompt: 'You are a science teacher. Use intermediate vocabulary.', openingMessage: 'How do you think we can stop global warming in our daily lives?' },
+    { levelId: 6, nameAr: 'نقاش ثقافي', descriptionAr: 'الاختلافات بين الدول', systemPrompt: 'You are a sociologist. Use advanced vocabulary.', openingMessage: 'What are the most significant cultural differences you have noticed?' },
+    { levelId: 7, nameAr: 'تحليل سياسي', descriptionAr: 'نقاش حول الأخبار العالمية', systemPrompt: 'You are a political analyst. Challenge the student\'s views.', openingMessage: 'What is your perspective on the current global economic situation?' },
+  ];
+
+  for (const scenario of scenarios) {
+    await prisma.aIScenario.create({
+      data: scenario
+    });
+  }
+
+  console.log(`Created ${scenarios.length} AI scenarios`);
+
+  // Create sample Games for Level 1
+  const level1Game1 = await prisma.game.create({
+    data: {
+      levelId: 1,
+      type: 'MULTIPLE_CHOICE',
+      titleAr: 'اختر الترجمة الصحيحة',
+      orderIndex: 1,
+    },
+  });
+
+  // Add questions to game 1
+  await prisma.gameQuestion.createMany({
+    data: [
+      {
+        gameId: level1Game1.id,
+        questionData: {
+          type: 'MULTIPLE_CHOICE',
+          sentenceEn: 'Hello, how are you?',
+          options: ['مرحباً، كيف حالك؟', 'وداعاً', 'شكراً', 'من فضلك'],
+        },
+        correctAnswer: 'مرحباً، كيف حالك؟',
+        orderIndex: 1,
+      },
+      {
+        gameId: level1Game1.id,
+        questionData: {
+          type: 'MULTIPLE_CHOICE',
+          sentenceEn: 'Thank you very much',
+          options: ['من فضلك', 'عفواً', 'شكراً جزيلاً', 'مع السلامة'],
+        },
+        correctAnswer: 'شكراً جزيلاً',
+        orderIndex: 2,
+      },
+      {
+        gameId: level1Game1.id,
+        questionData: {
+          type: 'MULTIPLE_CHOICE',
+          sentenceEn: 'Good morning',
+          options: ['مساء الخير', 'صباح الخير', 'تصبح على خير', 'مرحباً'],
+        },
+        correctAnswer: 'صباح الخير',
+        orderIndex: 3,
+      },
+    ],
+  });
+
+  const level1Game2 = await prisma.game.create({
+    data: {
+      levelId: 1,
+      type: 'FILL_BLANK',
+      titleAr: 'أكمل الجملة',
+      orderIndex: 2,
+    },
+  });
+
+  await prisma.gameQuestion.createMany({
+    data: [
+      {
+        gameId: level1Game2.id,
+        questionData: {
+          type: 'FILL_BLANK',
+          template: 'My ___ is Sarah.',
+          hint: 'اسم',
+          fullSentence: 'My name is Sarah.',
+        },
+        correctAnswer: 'name',
+        orderIndex: 1,
+      },
+      {
+        gameId: level1Game2.id,
+        questionData: {
+          type: 'FILL_BLANK',
+          template: 'I am ___ Morocco.',
+          hint: 'من',
+          fullSentence: 'I am from Morocco.',
+        },
+        correctAnswer: 'from',
+        orderIndex: 2,
+      },
+    ],
+  });
+
+  console.log('Created sample games for Level 1');
+
+  // Create Quiz for Level 1
+  const level1Quiz = await prisma.levelQuiz.create({
+    data: {
+      levelId: 1,
+      passScore: 70,
+      maxAttempts: 3,
+      timeLimit: 600, // 10 minutes
+    },
+  });
+
+  await prisma.quizQuestion.createMany({
+    data: [
+      {
+        quizId: level1Quiz.id,
+        type: 'MULTIPLE_CHOICE',
+        questionData: {
+          sentenceEn: 'Where is the bathroom?',
+          options: ['أين الحمام؟', 'أين المطعم؟', 'أين المطار؟', 'أين الفندق؟'],
+        },
+        correctAnswer: 'أين الحمام؟',
+        points: 20,
+        orderIndex: 1,
+      },
+      {
+        quizId: level1Quiz.id,
+        type: 'MULTIPLE_CHOICE',
+        questionData: {
+          sentenceEn: 'Nice to meet you',
+          options: ['مع السلامة', 'تشرفنا', 'شكراً', 'من فضلك'],
+        },
+        correctAnswer: 'تشرفنا',
+        points: 20,
+        orderIndex: 2,
+      },
+      {
+        quizId: level1Quiz.id,
+        type: 'FILL_BLANK',
+        questionData: {
+          template: 'Please ___ me.',
+          hint: 'ساعد',
+          fullSentence: 'Please help me.',
+        },
+        correctAnswer: 'help',
+        points: 20,
+        orderIndex: 3,
+      },
+      {
+        quizId: level1Quiz.id,
+        type: 'MULTIPLE_CHOICE',
+        questionData: {
+          sentenceEn: 'You are welcome',
+          options: ['شكراً', 'عفواً', 'مرحباً', 'وداعاً'],
+        },
+        correctAnswer: 'عفواً',
+        points: 20,
+        orderIndex: 4,
+      },
+      {
+        quizId: level1Quiz.id,
+        type: 'MULTIPLE_CHOICE',
+        questionData: {
+          sentenceEn: 'Good night',
+          options: ['صباح الخير', 'مساء الخير', 'تصبح على خير', 'مرحباً'],
+        },
+        correctAnswer: 'تصبح على خير',
+        points: 20,
+        orderIndex: 5,
+      },
+    ],
+  });
+
+  console.log('Created quiz for Level 1');
+
+  // Create Platform Settings
+  await prisma.platformSettings.upsert({
+    where: { id: 'singleton' },
+    update: {},
+    create: {
+      id: 'singleton',
+      platformName: 'معجَم',
+      supportEmail: 'support@mujam.com',
+      maintenanceMode: false,
+      freeAiLimit: 3,
+      freeLevelsCount: 2,
+      premiumMonthlyPrice: 9.99,
+      premiumYearlyPrice: 7.99,
+      trialDays: 7,
+      featureFlags: {},
+    },
+  });
+
+  console.log('Created platform settings');
+
+  // Create or update Super Admin user from env
+  const superAdminEmail = process.env.SUPER_ADMIN_EMAIL;
+  const superAdminPassword = process.env.SUPER_ADMIN_PASSWORD;
+  if (superAdminEmail && superAdminPassword) {
+    const passwordHash = await hashPassword(superAdminPassword);
+    await prisma.user.upsert({
+      where: { email: superAdminEmail },
+      update: { passwordHash, role: UserRole.ADMIN, name: 'Super Admin' },
+      create: {
+        email: superAdminEmail,
+        passwordHash,
+        name: 'Super Admin',
+        role: UserRole.ADMIN,
+      },
+    });
+    console.log('Super admin user created/updated:', superAdminEmail);
+  } else {
+    console.warn('SUPER_ADMIN_EMAIL and SUPER_ADMIN_PASSWORD must be set in .env to seed super admin.');
+  }
+
+  console.log('Seeding completed!');
+}
+
+main()
+  .catch((e) => {
+    console.error(e);
+    process.exit(1);
+  })
+  .finally(async () => {
+    await prisma.$disconnect();
+  });

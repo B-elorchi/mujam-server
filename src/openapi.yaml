@@ -1,0 +1,2113 @@
+openapi: 3.0.3
+info:
+  title: Mujam API
+  description: Language Learning Platform Backend API
+  version: 1.0.0
+  contact:
+    name: Mujam Support
+    email: support@mujam.com
+
+servers:
+  - url: http://localhost:4000
+    description: Development
+
+tags:
+  - name: Auth
+    description: Registration, login, tokens, password reset
+  - name: Users
+    description: Profile, avatar, stats
+  - name: Levels
+    description: Levels and sentences progress
+  - name: Placement
+    description: Placement test
+  - name: Games
+    description: Level games
+  - name: Quiz
+    description: Level quizzes
+  - name: AI
+    description: AI conversation sessions
+  - name: Shadowing
+    description: Stories and shadowing
+  - name: Streak
+    description: Streaks and achievements
+  - name: Leaderboard
+  - name: Notifications
+  - name: Certificate
+  - name: Referral
+  - name: Subscription
+  - name: Blog
+  - name: Admin
+    description: Admin-only endpoints
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: []
+      responses:
+        '200':
+          description: OK
+
+  # ─── Auth ─────────────────────────────────────────
+  /api/auth/register:
+    post:
+      summary: Register
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string }
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+      responses:
+        '201':
+          description: Registered
+        '400':
+          description: Validation or email already registered
+
+  /api/auth/login:
+    post:
+      summary: Login
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+      responses:
+        '200':
+          description: Returns user, accessToken, refreshToken
+        '401':
+          description: Invalid credentials
+
+  /api/auth/logout:
+    post:
+      summary: Logout (revoke refresh token)
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: Logged out
+        '401':
+          description: Unauthorized
+
+  /api/auth/refresh:
+    post:
+      summary: Refresh access token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New accessToken (and refreshToken)
+        '401':
+          description: Invalid refresh token
+
+  /api/auth/verify-email:
+    post:
+      summary: Verify email with code
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, code]
+              properties:
+                email: { type: string, format: email }
+                code: { type: string, minLength: 6, maxLength: 6 }
+      responses:
+        '200':
+          description: Email verified
+        '400':
+          description: Invalid code
+
+  /api/auth/resend-verification:
+    post:
+      summary: Resend verification email
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Email sent
+        '400':
+          description: Bad request
+
+  /api/auth/forgot-password:
+    post:
+      summary: Request password reset email
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email: { type: string, format: email }
+      responses:
+        '200':
+          description: Reset email sent (or silent success)
+        '400':
+          description: Bad request
+
+  /api/auth/reset-password:
+    post:
+      summary: Reset password with token
+      tags: [Auth]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password]
+              properties:
+                token: { type: string }
+                password: { type: string, minLength: 8 }
+      responses:
+        '200':
+          description: Password reset
+        '400':
+          description: Invalid token or validation
+
+  /api/auth/me:
+    get:
+      summary: Current user (from access token)
+      tags: [Auth]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: User object
+        '401':
+          description: Unauthorized
+
+  # ─── Users ────────────────────────────────────────
+  /api/users/profile:
+    get:
+      summary: Get profile
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: User profile
+        '401':
+          description: Unauthorized
+    patch:
+      summary: Update profile
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+      responses:
+        '200':
+          description: Updated profile
+        '401':
+          description: Unauthorized
+
+  /api/users/avatar:
+    post:
+      summary: 'Upload avatar (multipart/form-data, field: avatar)'
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                avatar: { type: string, format: binary }
+      responses:
+        '200':
+          description: Avatar URL
+        '401':
+          description: Unauthorized
+
+  /api/users/account:
+    delete:
+      summary: Delete account
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Account deleted
+        '401':
+          description: Unauthorized
+
+  /api/users/stats:
+    get:
+      summary: User stats
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Stats object
+        '401':
+          description: Unauthorized
+
+  /api/users/activity:
+    get:
+      summary: User activity
+      tags: [Users]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Activity list
+        '401':
+          description: Unauthorized
+
+  # ─── Levels ───────────────────────────────────────
+  /api/levels:
+    get:
+      summary: List levels
+      tags: [Levels]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: List of levels
+        '401':
+          description: Unauthorized
+
+  /api/levels/{id}:
+    get:
+      summary: Get level by ID
+      tags: [Levels]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Level details
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/levels/{id}/sentences:
+    get:
+      summary: Get sentences for level
+      tags: [Levels]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Sentences list
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/levels/{id}/sentences/{sentenceId}/listen:
+    post:
+      summary: Mark sentence as listened
+      tags: [Levels]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: sentenceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/levels/{id}/sentences/{sentenceId}/complete:
+    post:
+      summary: Mark sentence as completed
+      tags: [Levels]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: sentenceId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/levels/{id}/progress:
+    get:
+      summary: Get progress for level
+      tags: [Levels]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Progress object
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  # ─── Placement ────────────────────────────────────
+  /api/placement/questions:
+    get:
+      summary: Get placement questions
+      tags: [Placement]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Questions list
+        '401':
+          description: Unauthorized
+
+  /api/placement/submit:
+    post:
+      summary: Submit placement test
+      tags: [Placement]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers: { type: array, items: {} }
+      responses:
+        '200':
+          description: Result (score, assigned level)
+        '401':
+          description: Unauthorized
+
+  /api/placement/result:
+    get:
+      summary: Get placement result
+      tags: [Placement]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Last result
+        '401':
+          description: Unauthorized
+
+  # ─── Games ─────────────────────────────────────────
+  /api/games/level/{levelId}:
+    get:
+      summary: Get games for level
+      tags: [Games]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: levelId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Games list
+        '401':
+          description: Unauthorized
+
+  /api/games/{id}:
+    get:
+      summary: Get game by ID
+      tags: [Games]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Game with questions
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/games/{id}/submit:
+    post:
+      summary: Submit game answers
+      tags: [Games]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers: { type: array, items: {} }
+      responses:
+        '200':
+          description: Score and result
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/games/{id}/progress:
+    get:
+      summary: Get game progress
+      tags: [Games]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Progress object
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  # ─── Quiz ─────────────────────────────────────────
+  /api/quiz/level/{id}:
+    get:
+      summary: Get quiz for level
+      tags: [Quiz]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Quiz with questions
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+    post:
+      summary: Submit quiz for level
+      tags: [Quiz]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                answers: { type: array, items: {} }
+      responses:
+        '200':
+          description: Score and passed/failed
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/quiz/level/{id}/attempts:
+    get:
+      summary: Get quiz attempts for level
+      tags: [Quiz]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Attempts list
+        '401':
+          description: Unauthorized
+
+  # ─── AI ───────────────────────────────────────────
+  /api/ai/scenarios:
+    get:
+      summary: Get AI scenarios
+      tags: [AI]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Scenarios list
+        '401':
+          description: Unauthorized
+
+  /api/ai/session/start:
+    post:
+      summary: Start AI session
+      tags: [AI]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scenarioId: { type: string }
+                mode: { type: string, enum: [GUIDED, FREE] }
+      responses:
+        '200':
+          description: Session created
+        '401':
+          description: Unauthorized
+
+  /api/ai/session/{id}/message:
+    post:
+      summary: Send message (text or audio). Use multipart with optional audio file.
+      tags: [AI]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                text: { type: string }
+                audio: { type: string, format: binary }
+      responses:
+        '200':
+          description: AI reply
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/ai/session/{id}/end:
+    post:
+      summary: End AI session
+      tags: [AI]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Session ended
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/ai/sessions:
+    get:
+      summary: Get user AI sessions
+      tags: [AI]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Sessions list
+        '401':
+          description: Unauthorized
+
+  /api/ai/sessions/{id}:
+    get:
+      summary: Get AI session by ID
+      tags: [AI]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Session details
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  # ─── Shadowing ────────────────────────────────────
+  /api/shadowing/stories:
+    get:
+      summary: Get shadowing stories
+      tags: [Shadowing]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Stories list
+        '401':
+          description: Unauthorized
+
+  /api/shadowing/stories/{id}:
+    get:
+      summary: Get story by ID
+      tags: [Shadowing]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Story details
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/shadowing/transcribe:
+    post:
+      summary: 'Transcribe audio (multipart, field: audio)'
+      tags: [Shadowing]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio: { type: string, format: binary }
+      responses:
+        '200':
+          description: Transcription text
+        '401':
+          description: Unauthorized
+
+  /api/shadowing/compare:
+    post:
+      summary: Compare user audio to reference
+      tags: [Shadowing]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                userText: { type: string }
+                referenceText: { type: string }
+      responses:
+        '200':
+          description: Comparison result
+        '401':
+          description: Unauthorized
+
+  /api/shadowing/stories/{id}/progress:
+    post:
+      summary: Save story progress
+      tags: [Shadowing]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                currentStep: { type: integer }
+                accuracyScore: { type: integer }
+      responses:
+        '200':
+          description: Saved
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/shadowing/stories/{id}/complete:
+    post:
+      summary: Mark story complete
+      tags: [Shadowing]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Marked complete
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  # ─── Streak ───────────────────────────────────────
+  /api/streak:
+    get:
+      summary: Get streak
+      tags: [Streak]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Streak object
+        '401':
+          description: Unauthorized
+
+  /api/streak/freeze:
+    post:
+      summary: Use streak freeze (Premium)
+      tags: [Streak]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Freeze used
+        '401':
+          description: Unauthorized
+        '403':
+          description: Premium required or no freezes left
+
+  /api/streak/achievements:
+    get:
+      summary: Get achievements
+      tags: [Streak]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Achievements list
+        '401':
+          description: Unauthorized
+
+  # ─── Leaderboard ─────────────────────────────────
+  /api/leaderboard:
+    get:
+      summary: Get leaderboard
+      tags: [Leaderboard]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Leaderboard entries
+        '401':
+          description: Unauthorized
+
+  # ─── Notifications ────────────────────────────────
+  /api/notifications:
+    get:
+      summary: Get notifications
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Notifications list
+        '401':
+          description: Unauthorized
+
+  /api/notifications/read-all:
+    post:
+      summary: Mark all notifications as read
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+
+  /api/notifications/{id}/read:
+    post:
+      summary: Mark notification as read
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+        '401':
+          description: Unauthorized
+        '404':
+          description: Not found
+
+  /api/notifications/unread-count:
+    get:
+      summary: Get unread count
+      tags: [Notifications]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: { count: number }
+        '401':
+          description: Unauthorized
+
+  # ─── Certificate ─────────────────────────────────
+  /api/certificate/generate:
+    post:
+      summary: Generate certificate (Premium)
+      tags: [Certificate]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Certificate generated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Premium required
+
+  /api/certificate:
+    get:
+      summary: Get my certificate
+      tags: [Certificate]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Certificate object or null
+        '401':
+          description: Unauthorized
+
+  /api/certificate/verify/{code}:
+    get:
+      summary: Verify certificate by code (public)
+      tags: [Certificate]
+      parameters:
+        - name: code
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Certificate validity and holder info
+        '404':
+          description: Not found
+
+  # ─── Referral ─────────────────────────────────────
+  /api/referral/my-code:
+    get:
+      summary: Get my referral code
+      tags: [Referral]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Referral code
+        '401':
+          description: Unauthorized
+
+  /api/referral/stats:
+    get:
+      summary: Get referral stats
+      tags: [Referral]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Referral stats
+        '401':
+          description: Unauthorized
+
+  # ─── Subscription ─────────────────────────────────
+  /api/subscription:
+    get:
+      summary: Get current subscription
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Subscription or null
+        '401':
+          description: Unauthorized
+
+  /api/subscription/subscribe:
+    post:
+      summary: Subscribe to plan
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                plan: { type: string, enum: [PREMIUM, FREE] }
+                interval: { type: string }
+      responses:
+        '200':
+          description: Subscription created
+        '401':
+          description: Unauthorized
+
+  /api/subscription/cancel:
+    post:
+      summary: Cancel subscription
+      tags: [Subscription]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Cancelled
+        '401':
+          description: Unauthorized
+
+  # ─── Blog ─────────────────────────────────────────
+  /api/blog:
+    get:
+      summary: List blog posts (optional auth)
+      tags: [Blog]
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+      responses:
+        '200':
+          description: Posts list
+
+  /api/blog/categories:
+    get:
+      summary: Get categories
+      tags: [Blog]
+      responses:
+        '200':
+          description: Categories list
+
+  /api/blog/{slug}:
+    get:
+      summary: Get post by slug (optional auth)
+      tags: [Blog]
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Post details
+        '404':
+          description: Not found
+
+  # ─── Admin ────────────────────────────────────────
+  /api/admin/users/users:
+    get:
+      summary: '[Admin] List users'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer }
+        - name: limit
+          in: query
+          schema: { type: integer }
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: plan
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Users list
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/users/users/{id}:
+    get:
+      summary: '[Admin] Get user by ID'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User details
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+    patch:
+      summary: '[Admin] Update user'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                email: { type: string }
+                role: { type: string }
+                plan: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/users/users/{id}/suspend:
+    post:
+      summary: '[Admin] Suspend user'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User suspended
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/users/users/{id}/unsuspend:
+    post:
+      summary: '[Admin] Unsuspend user'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: User unsuspended
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/users/subscriptions:
+    get:
+      summary: '[Admin] List subscriptions'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Subscriptions list
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/users/team:
+    get:
+      summary: '[Admin] Get team members'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Team list
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+    post:
+      summary: '[Admin] Invite team member'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      description: Use POST /api/admin/users/team/invite
+      responses:
+        '200':
+          description: Invitation sent
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/users/team/invite:
+    post:
+      summary: '[Admin] Invite team member'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, role]
+              properties:
+                email: { type: string, format: email }
+                role: { type: string, enum: [ADMIN, EDITOR, AI_MANAGER, MARKETER, VIEWER] }
+      responses:
+        '200':
+          description: Invitation sent
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/users/team/{id}/role:
+    patch:
+      summary: '[Admin] Update team member role'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/sentences:
+    post:
+      summary: '[Admin] Create sentence'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [levelId, textEn, textAr, orderIndex]
+              properties:
+                levelId: { type: integer }
+                textEn: { type: string }
+                textAr: { type: string }
+                orderIndex: { type: integer }
+      responses:
+        '200':
+          description: Sentence created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/content/sentences/{id}:
+    patch:
+      summary: '[Admin] Update sentence'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                textEn: { type: string }
+                textAr: { type: string }
+                orderIndex: { type: integer }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+    delete:
+      summary: '[Admin] Delete sentence'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/sentences/{id}/audio:
+    post:
+      summary: '[Admin] Upload sentence audio (multipart, field: audio)'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio: { type: string, format: binary }
+      responses:
+        '200':
+          description: Audio URLs updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/games:
+    post:
+      summary: '[Admin] Create game'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [levelId, type, titleAr, orderIndex]
+              properties:
+                levelId: { type: integer }
+                type: { type: string, enum: [DRAG_DROP, MULTIPLE_CHOICE, AUDIO_MATCH, FILL_BLANK] }
+                titleAr: { type: string }
+                orderIndex: { type: integer }
+      responses:
+        '200':
+          description: Game created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/content/games/{id}:
+    patch:
+      summary: '[Admin] Update game'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                titleAr: { type: string }
+                orderIndex: { type: integer }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/games/{id}/questions:
+    post:
+      summary: '[Admin] Add game question'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                questionData: {}
+                correctAnswer: { type: string }
+                orderIndex: { type: integer }
+                sentenceId: { type: string }
+      responses:
+        '200':
+          description: Question added
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/games/{id}/questions/{qId}:
+    delete:
+      summary: '[Admin] Delete game question'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: qId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/quizzes/{id}:
+    patch:
+      summary: '[Admin] Update quiz'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                passScore: { type: integer }
+                maxAttempts: { type: integer }
+                timeLimit: { type: integer }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/stories:
+    post:
+      summary: '[Admin] Create story (multipart optional audio)'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [levelId, titleAr, fullText, orderIndex]
+              properties:
+                levelId: { type: integer }
+                titleAr: { type: string }
+                titleEn: { type: string }
+                fullText: { type: string }
+                orderIndex: { type: integer }
+                audio: { type: string, format: binary }
+      responses:
+        '200':
+          description: Story created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/content/stories/{id}:
+    patch:
+      summary: '[Admin] Update story'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                titleAr: { type: string }
+                titleEn: { type: string }
+                fullText: { type: string }
+                orderIndex: { type: integer }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/blog:
+    post:
+      summary: '[Admin] Create blog post'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, slug, content, category]
+              properties:
+                title: { type: string }
+                slug: { type: string }
+                excerpt: { type: string }
+                content: { type: string }
+                category: { type: string }
+                tags: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Post created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/content/blog/{id}:
+    patch:
+      summary: '[Admin] Update blog post'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                slug: { type: string }
+                excerpt: { type: string }
+                content: { type: string }
+                category: { type: string }
+                tags: { type: array, items: { type: string } }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+    delete:
+      summary: '[Admin] Delete blog post'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/content/blog/{id}/publish:
+    post:
+      summary: '[Admin] Publish blog post'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                publishedAt: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Published
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/ai/ai/settings:
+    get:
+      summary: '[Admin] Get AI settings'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: AI settings
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+    patch:
+      summary: '[Admin] Update AI settings'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                gptModel: { type: string }
+                sttModel: { type: string }
+                ttsModel: { type: string }
+                ttsVoice: { type: string }
+                temperature: { type: number }
+                systemPrompt: { type: string }
+                correctionStyle: { type: string }
+                formalityLevel: { type: integer }
+                monthlyBudgetUsd: { type: number }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/ai/ai/settings/test:
+    post:
+      summary: '[Admin] Test AI settings'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Test result
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/ai/ai/scenarios:
+    get:
+      summary: '[Admin] Get AI scenarios'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Scenarios list
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+    post:
+      summary: '[Admin] Create AI scenario'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [levelId, nameAr, descriptionAr, systemPrompt, openingMessage]
+              properties:
+                levelId: { type: integer }
+                nameAr: { type: string }
+                descriptionAr: { type: string }
+                systemPrompt: { type: string }
+                openingMessage: { type: string }
+                icon: { type: string }
+      responses:
+        '200':
+          description: Scenario created
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/ai/ai/scenarios/{id}:
+    patch:
+      summary: '[Admin] Update AI scenario'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nameAr: { type: string }
+                descriptionAr: { type: string }
+                systemPrompt: { type: string }
+                openingMessage: { type: string }
+                icon: { type: string }
+                isActive: { type: boolean }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+    delete:
+      summary: '[Admin] Delete AI scenario'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: Deleted
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+        '404':
+          description: Not found
+
+  /api/admin/ai/ai/usage:
+    get:
+      summary: '[Admin] Get AI usage'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: startDate
+          in: query
+          schema: { type: string, format: date }
+        - name: endDate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Usage data
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/ai/ai/usage/monthly-total:
+    get:
+      summary: '[Admin] Get monthly AI cost total'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Monthly total
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/broadcast/broadcast/preview:
+    post:
+      summary: '[Admin] Preview broadcast'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                body: { type: string }
+                channel: { type: string }
+                target: { type: string }
+                targetConfig: {}
+      responses:
+        '200':
+          description: Preview result
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/broadcast/broadcast/send:
+    post:
+      summary: '[Admin] Send broadcast'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, body, channel, target]
+              properties:
+                title: { type: string }
+                body: { type: string }
+                channel: { type: string }
+                target: { type: string }
+                targetConfig: {}
+                actionUrl: { type: string }
+                icon: { type: string }
+      responses:
+        '200':
+          description: Sent
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/broadcast/broadcast/schedule:
+    post:
+      summary: '[Admin] Schedule broadcast'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                title: { type: string }
+                body: { type: string }
+                channel: { type: string }
+                target: { type: string }
+                scheduledAt: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Scheduled
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/broadcast/broadcast/history:
+    get:
+      summary: '[Admin] Get broadcast history'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: History list
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/overview:
+    get:
+      summary: '[Admin] Analytics overview'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Overview stats
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/growth:
+    get:
+      summary: '[Admin] Growth analytics'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Growth data
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/revenue:
+    get:
+      summary: '[Admin] Revenue analytics'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: startDate
+          in: query
+          schema: { type: string }
+        - name: endDate
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Revenue data
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/funnel:
+    get:
+      summary: '[Admin] Funnel analytics'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Funnel data
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/activity-heatmap:
+    get:
+      summary: '[Admin] Activity heatmap'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: startDate
+          in: query
+          schema: { type: string }
+        - name: endDate
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: Heatmap data
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/content:
+    get:
+      summary: '[Admin] Content analytics'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Content stats
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/analytics/analytics/ai-cost:
+    get:
+      summary: '[Admin] AI cost analytics'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: startDate
+          in: query
+          schema: { type: string }
+        - name: endDate
+          in: query
+          schema: { type: string }
+      responses:
+        '200':
+          description: AI cost data
+        '401':
+          description: Unauthorized
+        '403':
+          description: Admin required
+
+  /api/admin/settings/settings:
+    get:
+      summary: '[Admin] Get platform settings (Super Admin)'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200':
+          description: Platform settings
+        '401':
+          description: Unauthorized
+        '403':
+          description: Super Admin required
+    patch:
+      summary: '[Admin] Update platform settings (Super Admin)'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                platformName: { type: string }
+                supportEmail: { type: string }
+                freeAiLimit: { type: integer }
+                freeLevelsCount: { type: integer }
+                premiumMonthlyPrice: { type: number }
+                premiumYearlyPrice: { type: number }
+                trialDays: { type: integer }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Super Admin required
+
+  /api/admin/settings/settings/maintenance:
+    post:
+      summary: '[Admin] Toggle maintenance mode (Super Admin)'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                enabled: { type: boolean }
+                message: { type: string }
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Super Admin required
+
+  /api/admin/settings/settings/feature-flags:
+    patch:
+      summary: '[Admin] Update feature flags (Super Admin)'
+      tags: [Admin]
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: true
+      responses:
+        '200':
+          description: Updated
+        '401':
+          description: Unauthorized
+        '403':
+          description: Super Admin required
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Access token from login or refresh
+
+  schemas: {}
+
+# Default: no auth required; add security per operation for protected routes
