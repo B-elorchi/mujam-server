@@ -84,7 +84,7 @@ export const quizController = {
       const { answers } = req.body as { answers: { questionId: string; answer: string }[] };
 
       const quiz = await prisma.levelQuiz.findUnique({
-        where: { levelId: parseInt(id as string) },
+        where: { levelId: parseInt(id) },
         include: {
           questions: true,
         },
@@ -199,10 +199,10 @@ export const quizController = {
 
   getAttempts: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const id = req.params.id as string;
 
       const quiz = await prisma.levelQuiz.findUnique({
-        where: { levelId: parseInt(id as string) },
+        where: { levelId: parseInt(id) },
       });
 
       if (!quiz) {

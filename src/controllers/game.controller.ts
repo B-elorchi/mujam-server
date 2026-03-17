@@ -219,13 +219,18 @@ export const gameController = {
         await trackLearningActivity(req.userId!, 'game');
       }
 
-      attempts: progress.attempts,
+      return successResponse(res, {
+        score,
+        passed,
+        correctCount,
+        totalQuestions: gameAny.questions.length,
+        attempts: progress.attempts,
       });
-  } catch(error) {
-    console.error('Submit answers error:', error);
-    return errorResponse(res, 'Server error', 500);
-  }
-},
+    } catch (error) {
+      console.error('Submit answers error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
 
   getProgress: async (req: Request, res: Response): Promise<Response> => {
     try {
