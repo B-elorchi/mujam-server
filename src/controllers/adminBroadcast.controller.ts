@@ -35,7 +35,7 @@ export const adminBroadcastController = {
     try {
       const { target, targetConfig } = req.body;
 
-      const users = await this.getTargetUsers(target, targetConfig);
+      const users = await adminBroadcastController.getTargetUsers(target, targetConfig);
 
       return successResponse(res, { count: users.length, users: users.slice(0, 5) });
     } catch (error) {
@@ -48,7 +48,7 @@ export const adminBroadcastController = {
     try {
       const { title, body, type, channel, target, targetConfig, actionUrl, icon, scheduledAt } = req.body;
 
-      const users = await this.getTargetUsers(target, targetConfig);
+      const users = await adminBroadcastController.getTargetUsers(target, targetConfig);
 
       const broadcast = await prisma.broadcastMessage.create({
         data: {

@@ -16,11 +16,12 @@ export const maintenanceMiddleware = async (
     const settings = await prisma.platformSettings.findFirst();
     
     if (settings?.maintenanceMode) {
-      return errorResponse(
+      errorResponse(
         res,
         settings.maintenanceMessage || 'Site is under maintenance',
         503
       );
+      return;
     }
 
     next();
@@ -36,7 +37,8 @@ export const featureFlagMiddleware = (flagName: string) => {
       const flags = (settings?.featureFlags as Record<string, boolean>) || {};
       
       if (flags[flagName] === false) {
-        return errorResponse(res, 'This feature is currently disabled', 403);
+        errorResponse(res, 'This feature is currently disabled', 403);
+        return;
       }
 
       next();

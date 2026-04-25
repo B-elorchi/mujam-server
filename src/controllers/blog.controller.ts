@@ -61,7 +61,7 @@ export const blogController = {
 
   getPost: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { slug } = req.params;
+      const { slug } = req.params as { slug: string };
 
       const post = await prisma.blogPost.findUnique({
         where: { slug },

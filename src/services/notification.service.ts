@@ -1,4 +1,7 @@
 import prisma from '../config/database';
+import { getNotificationQueue } from '../queues/notifications.queue';
+import { persistUserNotificationAndPublish } from './notification.persistence';
+import type { NotificationPayload } from '../types/notification';
 
 export async function createNotification(
   userId: string,
@@ -9,9 +12,21 @@ export async function createNotification(
     actionUrl?: string;
   }
 ): Promise<void> {
-  await prisma.userNotification.create({
-    data: { userId, ...data },
-  });
+  const payload: NotificationPayload = { userId, ...data };
+  const q = getNotificationQueue();
+  if (q) {
+    try {
+      await q.add('create', payload, {
+        removeOnComplete: { count: 2000 },
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1500 },
+      });
+      return;
+    } catch (e) {
+      console.error('[notifications] enqueue failed, persisting directly', e);
+    }
+  }
+  await persistUserNotificationAndPublish(payload);
 }
 
 // Convenience wrappers used across the app

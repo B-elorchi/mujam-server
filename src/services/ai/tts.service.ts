@@ -29,6 +29,17 @@ export async function textToSpeech(
     userId?: string,
     language?: 'en' | 'ar'
 ): Promise<Buffer> {
+    // Check Deepgram API key is configured
+    if (!process.env.DEEPGRAM_API_KEY) {
+        console.error('DEEPGRAM_API_KEY is not configured')
+        throw new Error('TTS configuration error: Deepgram API key is missing')
+    }
+
+    // Validate text input
+    if (!text || text.trim().length === 0) {
+        throw new Error('TTS error: Empty text provided')
+    }
+
     // Auto-detect language if not provided
     const detectedLang = language || detectLanguage(text)
     

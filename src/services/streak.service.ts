@@ -1,11 +1,35 @@
 import prisma from '../config/database';
 
-function getUTCDateOnly(date: Date): string {
-  return date.toISOString().split('T')[0]; // "2026-03-14"
+const STREAK_TIMEZONE = process.env.STREAK_TIMEZONE || 'Asia/Riyadh';
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function getDatePartsInTimeZone(date: Date): { year: number; month: number; day: number } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: STREAK_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(date);
+
+  const year = Number(parts.find((p) => p.type === 'year')?.value);
+  const month = Number(parts.find((p) => p.type === 'month')?.value);
+  const day = Number(parts.find((p) => p.type === 'day')?.value);
+
+  return { year, month, day };
+}
+
+function getDayNumberInTimeZone(date: Date): number {
+  const { year, month, day } = getDatePartsInTimeZone(date);
+  return Math.floor(Date.UTC(year, month - 1, day) / DAY_MS);
+}
+
+function dayNumberToDateKey(dayNumber: number): string {
+  return new Date(dayNumber * DAY_MS).toISOString().split('T')[0];
 }
 
 export async function updateStreak(userId: string): Promise<void> {
-  const today = getUTCDateOnly(new Date());
+  const now = new Date();
+  const todayDayNumber = getDayNumberInTimeZone(now);
 
   const streak = await prisma.userStreak.findUnique({ where: { userId } });
 
@@ -16,23 +40,21 @@ export async function updateStreak(userId: string): Promise<void> {
         userId,
         currentStreak: 1,
         longestStreak: 1,
-        lastStudyDate: new Date(today),
+        lastStudyDate: now,
         totalStudyDays: 1,
       },
     });
     return;
   }
 
-  const lastDate = streak.lastStudyDate ? getUTCDateOnly(streak.lastStudyDate) : null;
+  const lastDayNumber = streak.lastStudyDate ? getDayNumberInTimeZone(streak.lastStudyDate) : null;
 
   // Already studied today — no change
-  if (lastDate === today) return;
-
-  const yesterday = getUTCDateOnly(new Date(Date.now() - 24 * 60 * 60 * 1000));
+  if (lastDayNumber === todayDayNumber) return;
 
   let newStreak: number;
 
-  if (lastDate === yesterday) {
+  if (lastDayNumber === todayDayNumber - 1) {
     // Studied yesterday → increment
     newStreak = streak.currentStreak + 1;
   } else {
@@ -47,7 +69,7 @@ export async function updateStreak(userId: string): Promise<void> {
     data: {
       currentStreak: newStreak,
       longestStreak: newLongest,
-      lastStudyDate: new Date(today),
+      lastStudyDate: now,
       totalStudyDays: { increment: 1 },
     },
   });
@@ -69,35 +91,40 @@ export async function getStreakData(userId: string) {
     };
   }
 
-  const today = getUTCDateOnly(new Date());
-  const lastDate = streak.lastStudyDate ? getUTCDateOnly(streak.lastStudyDate) : null;
-  const studiedToday = lastDate === today;
+  const now = new Date();
+  const todayDayNumber = getDayNumberInTimeZone(now);
+  const lastDayNumber = streak.lastStudyDate ? getDayNumberInTimeZone(streak.lastStudyDate) : null;
+  const studiedToday = lastDayNumber === todayDayNumber;
 
   // Generate week view (last 7 days)
   const weekView = [];
-  const streakStartDate = new Date(streak.lastStudyDate!);
-  streakStartDate.setDate(streakStartDate.getDate() - streak.currentStreak + 1);
+  const streakStartDayNumber =
+    lastDayNumber !== null ? lastDayNumber - streak.currentStreak + 1 : Number.POSITIVE_INFINITY;
 
   for (let i = 6; i >= 0; i--) {
-    const date = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
-    const dateStr = getUTCDateOnly(date);
-    const isStudied = lastDate && dateStr <= lastDate && date >= streakStartDate;
-    
+    const dayNumber = todayDayNumber - i;
+    const dateStr = dayNumberToDateKey(dayNumber);
+    const dayDate = new Date(dayNumber * DAY_MS);
+    const isStudied =
+      lastDayNumber !== null && dayNumber >= streakStartDayNumber && dayNumber <= lastDayNumber;
+
     weekView.push({
       date: dateStr,
-      dayName: date.toLocaleDateString('ar-SA', { weekday: 'long' }),
+      dayName: dayDate.toLocaleDateString('ar-SA', { weekday: 'long', timeZone: STREAK_TIMEZONE }),
       studied: isStudied,
     });
   }
 
-  const currentHour = new Date().getHours();
+  const currentHour = Number(
+    new Intl.DateTimeFormat('en-US', { hour: '2-digit', hour12: false, timeZone: STREAK_TIMEZONE }).format(now)
+  );
   const streakAtRisk = !studiedToday && currentHour >= 20; // After 8pm
 
   return {
     currentStreak: streak.currentStreak,
     longestStreak: streak.longestStreak,
     totalStudyDays: streak.totalStudyDays,
-    lastStudyDate: lastDate,
+    lastStudyDate: lastDayNumber !== null ? dayNumberToDateKey(lastDayNumber) : null,
     studiedToday,
     freezesLeft: streak.freezesLeft,
     weekView,
@@ -112,12 +139,12 @@ export async function useStreakFreeze(userId: string): Promise<boolean> {
     return false;
   }
 
-  const today = getUTCDateOnly(new Date());
-  const yesterday = getUTCDateOnly(new Date(Date.now() - 24 * 60 * 60 * 1000));
-  const lastDate = streak.lastStudyDate ? getUTCDateOnly(streak.lastStudyDate) : null;
+  const now = new Date();
+  const todayDayNumber = getDayNumberInTimeZone(now);
+  const lastDayNumber = streak.lastStudyDate ? getDayNumberInTimeZone(streak.lastStudyDate) : null;
 
   // Can only use freeze if yesterday was missed
-  if (lastDate !== yesterday) {
+  if (lastDayNumber !== todayDayNumber - 1) {
     return false;
   }
 
@@ -125,7 +152,7 @@ export async function useStreakFreeze(userId: string): Promise<boolean> {
   await prisma.userStreak.update({
     where: { userId },
     data: {
-      lastStudyDate: new Date(today),
+      lastStudyDate: now,
       freezesLeft: { decrement: 1 },
     },
   });

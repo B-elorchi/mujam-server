@@ -19,7 +19,6 @@ export const gameController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
 
       const level = await prisma.level.findUnique({
         where: { id: levelIdNum },
@@ -28,10 +27,6 @@ export const gameController = {
 
       if (!level) {
         return errorResponse(res, 'Level not found', 404);
-      }
-
-      if (!level.isFree && !hasPremiumAccess) {
-        return errorResponse(res, 'Premium subscription required', 403);
       }
 
       const games = await prisma.game.findMany({
@@ -94,16 +89,11 @@ export const gameController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
 
       const level = await prisma.level.findUnique({
         where: { id: game.levelId },
         select: { isFree: true },
       });
-
-      if (level && !level.isFree && !hasPremiumAccess) {
-        return errorResponse(res, 'Premium subscription required', 403);
-      }
 
       const gameAny = game as any;
       const questionsWithoutAnswers = gameAny.questions.map((q: any) => ({

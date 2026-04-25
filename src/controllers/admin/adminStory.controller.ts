@@ -4,16 +4,28 @@ import prisma from '../../config/database';
 import { successResponse, errorResponse } from '../../utils/apiResponse';
 import { uploadFile, deleteFile } from '../../services/storage';
 import { generateWordTiming } from '../../services/ai/stt.service';
+import { textToSpeech } from '../../services/ai/tts.service';
 
 export const adminStoryController = {
-  // GET stories for a level
+  // GET stories for a level, or all stories (admin) when levelId is omitted
   getStories: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const levelIdParam = req.query.levelId;
-      const levelId = parseInt(Array.isArray(levelIdParam) ? levelIdParam[0] : levelIdParam || '0');
+      const levelIdParam = req.query.levelId as string | undefined;
+      const raw = Array.isArray(levelIdParam) ? levelIdParam[0] : levelIdParam;
 
-      if (!levelId) {
-        return errorResponse(res, 'معرف المستوى مطلوب', 400);
+      if (!raw || raw === '') {
+        const stories = await prisma.story.findMany({
+          orderBy: [{ levelId: 'asc' }, { orderIndex: 'asc' }],
+          include: {
+            level: { select: { id: true, titleAr: true } },
+          },
+        });
+        return successResponse(res, { stories });
+      }
+
+      const levelId = parseInt(raw, 10);
+      if (Number.isNaN(levelId) || levelId < 1) {
+        return errorResponse(res, 'معرف المستوى غير صالح', 400);
       }
 
       const stories = await prisma.story.findMany({
@@ -42,7 +54,7 @@ export const adminStoryController = {
   // GET single story
   getStory: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const story = await prisma.story.findUnique({
         where: { id },
@@ -69,7 +81,7 @@ export const adminStoryController = {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return errorResponse(res, 'بيانات غير صالحة', 400, errors.array());
+        return errorResponse(res, 'بيانات غير صالحة', 400);
       }
 
       const { levelId, titleAr, titleEn, fullText, orderIndex, wordsTiming } = req.body;
@@ -138,10 +150,10 @@ export const adminStoryController = {
     try {
       const errors = validationResult(req);
       if (!errors.isEmpty()) {
-        return errorResponse(res, 'بيانات غير صالحة', 400, errors.array());
+        return errorResponse(res, 'بيانات غير صالحة', 400);
       }
 
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { titleAr, titleEn, fullText, orderIndex } = req.body;
       const audioFile = (req as any).file;
 
@@ -199,7 +211,7 @@ export const adminStoryController = {
   // DELETE story (soft delete)
   deleteStory: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const story = await prisma.story.findUnique({ where: { id } });
       if (!story) {
@@ -221,7 +233,7 @@ export const adminStoryController = {
   // POST regenerate word timing
   regenerateTiming: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const story = await prisma.story.findUnique({ where: { id } });
       if (!story) {
@@ -248,10 +260,8 @@ export const adminStoryController = {
   // POST bulk generate audio for all stories
   bulkGenerateAudio: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { textToSpeech } = await import('../../services/ai/tts.service');
-      
       const stories = await prisma.story.findMany({
-        where: { 
+        where: {
           isActive: true,
           audioUrl: null, // Only generate for stories without audio
         },
@@ -267,10 +277,10 @@ export const adminStoryController = {
       for (const story of stories) {
         try {
           console.log(`Generating audio for story: ${story.titleAr}...`);
-          
+
           // Generate TTS audio
-          const audioBuffer = await textToSpeech(story.fullText, 'normal');
-          
+          const audioBuffer = await textToSpeech(story.fullText, 'normal', req.userId);
+
           // Upload to MinIO
           const audioUrl = await uploadFile(
             'audio-stories',
@@ -279,14 +289,23 @@ export const adminStoryController = {
             'audio/mpeg'
           );
 
-          // Update story with audio URL
+          // Generate word-level timing using the same audio buffer
+          console.log(`Generating word timing for story: ${story.titleAr}...`);
+          const wordsTiming = await generateWordTiming(
+            req.userId!,
+            audioBuffer,
+            'audio/mpeg',
+            story.fullText
+          );
+
+          // Update story with audio URL and word timing
           await prisma.story.update({
             where: { id: story.id },
-            data: { audioUrl },
+            data: { audioUrl, wordsTiming },
           });
 
           generated++;
-          console.log(`✓ Generated audio for: ${story.titleAr}`);
+          console.log(`✓ Generated audio + timing for: ${story.titleAr}`);
         } catch (error) {
           console.error(`✗ Failed to generate audio for story ${story.id}:`, error);
           failed++;

@@ -4,6 +4,44 @@ import { successResponse, errorResponse } from '../utils/apiResponse';
 import { generateRandomToken } from '../utils/hash';
 
 export const certificateController = {
+  checkEligibility: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        include: {
+          levelCompletion: true,
+          _count: { select: { aiSessions: true } },
+        },
+      });
+
+      if (!user) {
+        return errorResponse(res, 'User not found', 404);
+      }
+
+      const completedLevels = user.levelCompletion.filter((lc) => lc.completed).length;
+      const shadowingDone = user.levelCompletion.length > 0 && user.levelCompletion.every((lc) => lc.shadowingDone);
+      const aiSessions = user._count.aiSessions;
+      const totalLevels = 10;
+      const minAiSessions = 5;
+      const minLevels = 7;
+
+      const eligible = completedLevels >= minLevels && shadowingDone && aiSessions >= minAiSessions;
+
+      return successResponse(res, {
+        completedLevels,
+        totalLevels,
+        shadowingDone,
+        aiSessions,
+        minAiSessions,
+        minLevels,
+        eligible,
+      });
+    } catch (error) {
+      console.error('Check eligibility error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
   generate: async (req: Request, res: Response): Promise<Response> => {
     try {
       const user = await prisma.user.findUnique({
@@ -89,7 +127,7 @@ export const certificateController = {
 
   verify: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { code } = req.params;
+      const { code } = req.params as { code: string };
 
       const certificate = await prisma.certificate.findUnique({
         where: { verifyCode: code },
@@ -102,7 +140,7 @@ export const certificateController = {
 
       return successResponse(res, {
         valid: true,
-        studentName: certificate.user.name,
+        studentName: (certificate as any).user.name,
         issuedAt: certificate.issuedAt,
       });
     } catch (error) {

@@ -70,7 +70,7 @@ export const adminGameController = {
         return errorResponse(res, errors.array()[0].msg, 400);
       }
 
-      const { levelId, type, titleAr, titleEn, descriptionAr, orderIndex } = req.body;
+      const { levelId, type, titleAr, orderIndex } = req.body;
 
       // Check if level exists
       const level = await prisma.level.findUnique({ where: { id: levelId } });
@@ -83,8 +83,6 @@ export const adminGameController = {
           levelId,
           type,
           titleAr,
-          titleEn,
-          descriptionAr,
           orderIndex,
         },
       });

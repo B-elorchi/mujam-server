@@ -17,11 +17,6 @@ export const shadowingController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
-      if (!hasPremiumAccess) {
-        return errorResponse(res, 'Premium subscription required for shadowing', 403);
-      }
-
       const stories = await prisma.story.findMany({
         where: { levelId: { lte: user.currentLevel }, isActive: true },
         orderBy: { orderIndex: 'asc' },
@@ -53,7 +48,7 @@ export const shadowingController = {
 
   getStory: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const story = await prisma.story.findUnique({
         where: { id },
@@ -67,10 +62,6 @@ export const shadowingController = {
         where: { id: req.userId },
         select: { plan: true, role: true },
       });
-
-      if (user?.plan !== 'PREMIUM' && user?.role !== 'ADMIN') {
-        return errorResponse(res, 'Premium subscription required', 403);
-      }
 
       const progress = await prisma.userShadowingProgress.findUnique({
         where: {
@@ -105,6 +96,15 @@ export const shadowingController = {
         userId: req.userId
       });
 
+      // Validate minimum audio size
+      if (req.file.buffer.length < 1024) {
+        return errorResponse(
+          res, 
+          'التسجيل قصير جداً. يرجى التحدث لمدة ثانية واحدة على الأقل.', 
+          400
+        );
+      }
+
       const result = await transcribeAudio(
         req.userId!,
         req.file.buffer,
@@ -113,10 +113,31 @@ export const shadowingController = {
 
       console.log('Transcription result:', result.transcript);
 
+      // Handle empty transcript gracefully
+      if (!result.transcript || result.transcript.trim().length === 0) {
+        return errorResponse(
+          res,
+          'لم يتم التعرف على الكلام. يرجى التحدث بصوت أعلى أو التحقق من الميكروفون.',
+          422
+        );
+      }
+
       return successResponse(res, { transcript: result.transcript });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Transcribe error:', error);
-      return errorResponse(res, 'Transcription failed', 500);
+      
+      // Handle specific error types with user-friendly messages
+      if (error.message?.includes('AUDIO_TOO_SHORT')) {
+        return errorResponse(res, 'التسجيل قصير جداً. يرجى التحدث لمدة أطول.', 400);
+      }
+      if (error.message?.includes('AUDIO_SILENT')) {
+        return errorResponse(res, 'لم يتم اكتشاف صوت. يرجى التحقق من الميكروفون.', 400);
+      }
+      if (error.message?.includes('NO_RESULT')) {
+        return errorResponse(res, 'لم يتم التعرف على الكلام. يرجى المحاولة مرة أخرى.', 422);
+      }
+      
+      return errorResponse(res, 'فشل التعرف على الكلام. يرجى المحاولة مرة أخرى.', 500);
     }
   },
 
@@ -131,16 +152,23 @@ export const shadowingController = {
       const originalWords = originalText.toLowerCase().trim().split(/\s+/);
       const userWords = userTranscript.toLowerCase().trim().split(/\s+/);
 
-      let correctWords = 0;
-      let originalIndex = 0;
+      // Use LCS (Longest Common Subsequence) to count correctly spoken words
+      // This handles insertions and deletions gracefully
+      const m = originalWords.length;
+      const n = userWords.length;
+      const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
 
-      for (const userWord of userWords) {
-        if (originalWords[originalIndex] === userWord) {
-          correctWords++;
+      for (let i = 1; i <= m; i++) {
+        for (let j = 1; j <= n; j++) {
+          if (originalWords[i - 1] === userWords[j - 1]) {
+            dp[i][j] = dp[i - 1][j - 1] + 1;
+          } else {
+            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
+          }
         }
-        originalIndex++;
       }
 
+      const correctWords = dp[m][n];
       const accuracy = Math.round((correctWords / originalWords.length) * 100);
 
       return successResponse(res, {
@@ -158,7 +186,7 @@ export const shadowingController = {
 
   saveProgress: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { currentStep, accuracyScore } = req.body;
 
       const progress = await prisma.userShadowingProgress.upsert({
@@ -191,7 +219,7 @@ export const shadowingController = {
 
   markComplete: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const progress = await prisma.userShadowingProgress.upsert({
         where: {
@@ -218,32 +246,11 @@ export const shadowingController = {
       });
 
       if (story) {
-        const completion = await prisma.userLevelCompletion.findUnique({
-          where: {
-            userId_levelId: {
-              userId: req.userId!,
-              levelId: story.levelId,
-            },
-          },
-        });
-
-        if (completion) {
-          await prisma.userLevelCompletion.update({
-            where: { id: completion.id },
-            data: { shadowingDone: true },
-          });
-        } else {
-          await prisma.userLevelCompletion.create({
-            data: {
-              userId: req.userId!,
-              levelId: story.levelId,
-              shadowingDone: true,
-            },
-          });
-        }
-
         // Track learning activity for gamification (streak, points, achievements)
         await trackLearningActivity(req.userId!, 'shadowing');
+
+        // Check if ALL stories for this level are now complete and advance level if so
+        await checkLevelCompletion(req.userId!, story.levelId);
       }
 
       return successResponse(res, progress, 'Story completed');

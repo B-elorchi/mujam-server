@@ -6,11 +6,11 @@ import { uploadAudio } from '../middleware/upload';
 
 const router = Router();
 
-router.get('/stories', authMiddleware, shadowingController.getStories);
-router.get('/stories/:id', authMiddleware, shadowingController.getStory);
-router.post('/transcribe', authMiddleware, uploadAudio.single('audio'), shadowingController.transcribe);
-router.post('/compare', authMiddleware, shadowingController.compare);
-router.post('/stories/:id/progress', authMiddleware, shadowingController.saveProgress);
-router.post('/stories/:id/complete', authMiddleware, shadowingController.markComplete);
+router.get('/stories', authMiddleware, planGuard('PREMIUM'), shadowingController.getStories);
+router.get('/stories/:id', authMiddleware, planGuard('PREMIUM'), shadowingController.getStory);
+router.post('/transcribe', authMiddleware, planGuard('PREMIUM'), uploadAudio.single('audio'), shadowingController.transcribe);
+router.post('/compare', authMiddleware, planGuard('PREMIUM'), shadowingController.compare);
+router.post('/stories/:id/progress', authMiddleware, planGuard('PREMIUM'), shadowingController.saveProgress);
+router.post('/stories/:id/complete', authMiddleware, planGuard('PREMIUM'), shadowingController.markComplete);
 
 export default router;

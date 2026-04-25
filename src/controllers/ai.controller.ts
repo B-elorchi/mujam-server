@@ -50,11 +50,8 @@ export const aiController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      // Plan guard check for free users
-      let sessionLimit = 3;
-      if (user.plan === 'PREMIUM' || user.role === 'ADMIN') {
-        sessionLimit = 999999;
-      }
+      // AI is temporarily open for all users.
+      const sessionLimit = 999999;
 
       const monthStart = new Date();
       monthStart.setDate(1);
@@ -66,7 +63,7 @@ export const aiController = {
       });
 
       if (sessionsThisMonth >= sessionLimit) {
-        return errorResponse(res, 'Monthly AI session limit reached. Upgrade to Premium for unlimited sessions.', 403);
+        return errorResponse(res, 'Monthly AI session limit reached.', 403);
       }
 
       const settings = await prisma.aISettings.findFirst();
@@ -150,15 +147,43 @@ export const aiController = {
 
       // 1. Transcribe audio if provided
       if (req.file) {
+        // Validate minimum audio size
+        if (req.file.buffer.length < 1024) {
+          sendEvent('error', { message: 'التسجيل قصير جداً. يرجى التحدث لمدة ثانية واحدة على الأقل.' });
+          res.end();
+          return;
+        }
+
         sendEvent('status', { step: 'transcribing' });
-        const sttResult = await transcribeAudio((req as any).userId!, req.file.buffer, req.file.mimetype, language);
-        userText = sttResult.transcript;
-        durationSeconds = sttResult.duration;
-        sendEvent('transcript', { text: userText });
+        try {
+          const sttResult = await transcribeAudio((req as any).userId!, req.file.buffer, req.file.mimetype, language);
+          userText = sttResult.transcript;
+          durationSeconds = sttResult.duration;
+          
+          // Check if transcript is empty
+          if (!userText || userText.trim().length === 0) {
+            sendEvent('error', { message: 'لم يتم التعرف على الكلام. يرجى التحدث بصوت أعلى أو التحقق من الميكروفون.' });
+            res.end();
+            return;
+          }
+          
+          sendEvent('transcript', { text: userText });
+        } catch (sttError: any) {
+          console.error('STT Error:', sttError);
+          let errorMessage = 'فشل التعرف على الكلام.';
+          if (sttError.message?.includes('AUDIO_TOO_SHORT')) {
+            errorMessage = 'التسجيل قصير جداً. يرجى التحدث لمدة أطول.';
+          } else if (sttError.message?.includes('AUDIO_SILENT')) {
+            errorMessage = 'لم يتم اكتشاف صوت. يرجى التحقق من الميكروفون.';
+          }
+          sendEvent('error', { message: errorMessage });
+          res.end();
+          return;
+        }
       }
 
       if (!userText) {
-        sendEvent('error', { message: 'No text or audio provided' });
+        sendEvent('error', { message: 'لم يتم إرسال نص أو صوت. يرجى المحاولة مرة أخرى.' });
         res.end();
         return;
       }
@@ -222,7 +247,18 @@ export const aiController = {
         stack: error.stack,
         response: error.response?.data
       });
-      sendEvent('error', { message: 'حدث خطأ غير متوقع: ' + (error.message || '') });
+      
+      // Provide user-friendly Arabic error messages
+      let userMessage = 'حدث خطأ غير متوقع. يرجى المحاولة مرة أخرى.';
+      if (error.message?.includes('Deepgram') || error.message?.includes('transcription')) {
+        userMessage = 'فشل في معالجة الصوت. يرجى التأكد من صوت الميكروفون والمحاولة مرة أخرى.';
+      } else if (error.message?.includes('TTS')) {
+        userMessage = 'فشل في توليد الصوت، لكن تم استلام الرد النصي.';
+      } else if (error.message?.includes('timeout') || error.message?.includes('ETIMEDOUT')) {
+        userMessage = 'انتهت مهلة الاتصال. يرجى التحقق من الإنترنت والمحاولة مرة أخرى.';
+      }
+      
+      sendEvent('error', { message: userMessage });
       res.end();
     }
   },
@@ -230,12 +266,53 @@ export const aiController = {
   endSession: async (req: Request, res: Response): Promise<Response> => {
     try {
       const { id } = req.params;
-      const summary = await analyzeSession(id as string, (req as any).userId!);
+      const userId = (req as any).userId as string;
+      const session = await prisma.aISession.findUnique({
+        where: { id: id as string },
+        select: { id: true, userId: true, endedAt: true, messages: true },
+      });
 
-      // Track learning activity for gamification
-      await trackLearningActivity((req as any).userId!, 'ai_session');
+      if (!session || session.userId !== userId) {
+        return errorResponse(res, 'Session not found', 404);
+      }
 
-      return successResponse(res, summary, 'Session ended and analyzed');
+      let summary: any = null;
+      try {
+        summary = await analyzeSession(id as string, userId);
+      } catch (analysisError) {
+        console.warn('Session analysis failed, ending without AI summary:', analysisError);
+        await prisma.aISession.update({
+          where: { id: id as string },
+          data: {
+            endedAt: session.endedAt || new Date(),
+            errorSummary: {
+              topMistakes: [],
+              improvementAreas: [],
+              strengths: [],
+              nextFocusAreas: [],
+              overallScore: 0,
+              summaryAr: 'انتهت الجلسة بنجاح، ولكن تعذر إنشاء تحليل مفصل الآن.',
+            } as any,
+          },
+        });
+        summary = {
+          topMistakes: [],
+          improvementAreas: [],
+          strengths: [],
+          nextFocusAreas: [],
+          overallScore: 0,
+          summaryAr: 'انتهت الجلسة بنجاح، ولكن تعذر إنشاء تحليل مفصل الآن.',
+        };
+      }
+
+      // Track learning activity for gamification (non-blocking)
+      try {
+        await trackLearningActivity(userId, 'ai_session');
+      } catch (trackError) {
+        console.warn('Track learning activity failed:', trackError);
+      }
+
+      return successResponse(res, summary, 'Session ended');
     } catch (error) {
       console.error('End session error:', error);
       return errorResponse(res, 'Server error', 500);

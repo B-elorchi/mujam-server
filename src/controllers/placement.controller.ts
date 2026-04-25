@@ -1,8 +1,9 @@
 import { Request, Response } from 'express';
+import type { PlacementQuestion } from '@prisma/client';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 
-// Helper to shuffle array
+/** Fisher–Yates shuffle — new order on every request so users don’t all see the same sequence */
 const shuffleArray = <T>(array: T[]): T[] => {
   const shuffled = [...array];
   for (let i = shuffled.length - 1; i > 0; i--) {
@@ -12,22 +13,32 @@ const shuffleArray = <T>(array: T[]): T[] => {
   return shuffled;
 };
 
+const QUESTIONS_PER_LEVEL = 2;
+const PLACEMENT_LEVELS = 7;
+
+/** Normalize Arabic text for answer comparison */
+const normalizeAr = (s: string): string =>
+  s
+    .trim()
+    .replace(/\s+/g, ' ')
+    .normalize('NFKC');
+
 export const placementController = {
   getQuestions: async (_req: Request, res: Response): Promise<Response> => {
     try {
-      // Get 2 active questions per level (14 total)
-      const questions = [];
-      for (let level = 1; level <= 7; level++) {
-        const levelQuestions = await prisma.placementQuestion.findMany({
+      const picked: PlacementQuestion[] = [];
+
+      for (let level = 1; level <= PLACEMENT_LEVELS; level++) {
+        const pool = await prisma.placementQuestion.findMany({
           where: { targetLevel: level, isActive: true },
-          take: 2,
-          orderBy: { orderIndex: 'asc' },
         });
-        questions.push(...levelQuestions);
+        if (pool.length === 0) continue;
+        const shuffled = shuffleArray(pool);
+        const n = Math.min(QUESTIONS_PER_LEVEL, shuffled.length);
+        picked.push(...shuffled.slice(0, n));
       }
 
-      // Shuffle questions and shuffle options within each question
-      const shuffledQuestions = shuffleArray(questions).map((q) => ({
+      const shuffledQuestions = shuffleArray(picked).map((q) => ({
         id: q.id,
         sentenceEn: q.sentenceEn,
         options: shuffleArray(q.options as string[]),
@@ -91,7 +102,8 @@ export const placementController = {
         const question = questionMap.get(answer.questionId);
         if (!question) continue;
 
-        const isCorrect = answer.selectedOption === question.correctAr;
+        const isCorrect =
+          normalizeAr(String(answer.selectedOption ?? '')) === normalizeAr(question.correctAr);
         if (isCorrect) {
           totalCorrect++;
           levelScores[question.targetLevel].correct++;

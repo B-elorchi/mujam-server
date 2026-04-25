@@ -35,11 +35,14 @@ async function seedLevels() {
   const levels = [
     { id: 1, titleAr: 'السفر والمواصلات', titleEn: 'Travel & Transportation', icon: '✈️', orderIndex: 1, isFree: true },
     { id: 2, titleAr: 'المستشفى', titleEn: 'Hospital', icon: '🏥', orderIndex: 2, isFree: true },
-    { id: 3, titleAr: 'العمل والمدرسة', titleEn: 'Work & School', icon: '💼', orderIndex: 3, isFree: false },
-    { id: 4, titleAr: 'المطعم', titleEn: 'Restaurant', icon: '🍽️', orderIndex: 4, isFree: false },
-    { id: 5, titleAr: 'التسوق', titleEn: 'Shopping', icon: '🛒', orderIndex: 5, isFree: false },
-    { id: 6, titleAr: 'التعارف والعلاقات', titleEn: 'Introductions & Relations', icon: '🤝', orderIndex: 6, isFree: false },
-    { id: 7, titleAr: 'التعارف والتحية', titleEn: 'Greetings & Meetings', icon: '👋', orderIndex: 7, isFree: false },
+    { id: 3, titleAr: 'العمل والمدرسة', titleEn: 'Work & School', icon: '💼', orderIndex: 3, isFree: true },
+    { id: 4, titleAr: 'المطعم', titleEn: 'Restaurant', icon: '🍽️', orderIndex: 4, isFree: true },
+    { id: 5, titleAr: 'التسوق', titleEn: 'Shopping', icon: '🛒', orderIndex: 5, isFree: true },
+    { id: 6, titleAr: 'التعارف والعلاقات', titleEn: 'Introductions & Relations', icon: '🤝', orderIndex: 6, isFree: true },
+    { id: 7, titleAr: 'التعارف والتحية', titleEn: 'Greetings & Meetings', icon: '👋', orderIndex: 7, isFree: true },
+    { id: 8, titleAr: 'في الفندق', titleEn: 'Hotel & Accommodation', icon: '🏨', orderIndex: 8, isFree: true },
+    { id: 9, titleAr: 'الخدمات اليومية', titleEn: 'Daily Services', icon: '📮', orderIndex: 9, isFree: true },
+    { id: 10, titleAr: 'العمل المتقدم', titleEn: 'Advanced Workplace', icon: '📈', orderIndex: 10, isFree: true },
   ]
 
   for (const level of levels) {
@@ -75,6 +78,10 @@ async function seedSentences() {
     ...level4Sentences,   // المطعم
     ...level5Sentences,   // التسوق
     ...level6Sentences,   // التعارف والعلاقات
+    ...level7Sentences,   // التعارف والتحية
+    ...level8Sentences,   // الفندق
+    ...level9Sentences,   // الخدمات اليومية
+    ...level10Sentences,  // العمل المتقدم
   ]
 
   for (const sentence of allSentences) {
@@ -333,9 +340,61 @@ const level6Sentences = [
   { levelId: 6, orderIndex: 30, textEn: 'Goodbye.', textAr: 'إلى اللقاء.' },
 ]
 
+const level7Sentences = [
+  { levelId: 7, orderIndex: 1, textEn: 'Nice to meet you. What do you do?', textAr: 'تشرفت بمعرفتك. ما مجال عملك؟' },
+  { levelId: 7, orderIndex: 2, textEn: 'I recently moved to this city.', textAr: 'انتقلت مؤخرًا إلى هذه المدينة.' },
+  { levelId: 7, orderIndex: 3, textEn: 'Can we exchange contact details?', textAr: 'هل يمكننا تبادل معلومات التواصل؟' },
+  { levelId: 7, orderIndex: 4, textEn: 'Let us keep in touch.', textAr: 'دعنا نبقى على تواصل.' },
+  { levelId: 7, orderIndex: 5, textEn: 'It was great talking with you.', textAr: 'سعدت كثيرًا بالحديث معك.' },
+  { levelId: 7, orderIndex: 6, textEn: 'Do you have any plans this weekend?', textAr: 'هل لديك أي خطط لهذا الأسبوع؟' },
+  { levelId: 7, orderIndex: 7, textEn: 'Would you like to grab coffee sometime?', textAr: 'هل ترغب في تناول القهوة يومًا ما؟' },
+  { levelId: 7, orderIndex: 8, textEn: 'Thanks for the invitation.', textAr: 'شكرًا على الدعوة.' },
+  { levelId: 7, orderIndex: 9, textEn: 'I am still improving my English.', textAr: 'ما زلت أطور لغتي الإنجليزية.' },
+  { levelId: 7, orderIndex: 10, textEn: 'Could you speak a little more clearly?', textAr: 'هل يمكنك التحدث بوضوح أكثر قليلًا؟' },
+]
+
+const level8Sentences = [
+  { levelId: 8, orderIndex: 1, textEn: 'I have a reservation under my name.', textAr: 'لدي حجز باسمي.' },
+  { levelId: 8, orderIndex: 2, textEn: 'Can I check in early?', textAr: 'هل يمكنني تسجيل الدخول مبكرًا؟' },
+  { levelId: 8, orderIndex: 3, textEn: 'Is breakfast included with the room?', textAr: 'هل الإفطار مشمول مع الغرفة؟' },
+  { levelId: 8, orderIndex: 4, textEn: 'Could you send extra towels, please?', textAr: 'هل يمكن إرسال مناشف إضافية من فضلك؟' },
+  { levelId: 8, orderIndex: 5, textEn: 'The air conditioner is not working.', textAr: 'مكيف الهواء لا يعمل.' },
+  { levelId: 8, orderIndex: 6, textEn: 'Can I request a late check-out?', textAr: 'هل يمكنني طلب تسجيل خروج متأخر؟' },
+  { levelId: 8, orderIndex: 7, textEn: 'Where is the nearest metro station?', textAr: 'أين أقرب محطة مترو؟' },
+  { levelId: 8, orderIndex: 8, textEn: 'Please call a taxi for me.', textAr: 'يرجى طلب سيارة أجرة لي.' },
+  { levelId: 8, orderIndex: 9, textEn: 'Could you recommend a good restaurant nearby?', textAr: 'هل يمكنك اقتراح مطعم جيد قريب؟' },
+  { levelId: 8, orderIndex: 10, textEn: 'Thank you for your hospitality.', textAr: 'شكرًا على حسن الضيافة.' },
+]
+
+const level9Sentences = [
+  { levelId: 9, orderIndex: 1, textEn: 'I need to open a bank account.', textAr: 'أحتاج إلى فتح حساب بنكي.' },
+  { levelId: 9, orderIndex: 2, textEn: 'Where can I pay this bill?', textAr: 'أين يمكنني دفع هذه الفاتورة؟' },
+  { levelId: 9, orderIndex: 3, textEn: 'I would like to send this package.', textAr: 'أود إرسال هذه الشحنة.' },
+  { levelId: 9, orderIndex: 4, textEn: 'Can you help me fill out this form?', textAr: 'هل يمكنك مساعدتي في تعبئة هذا النموذج؟' },
+  { levelId: 9, orderIndex: 5, textEn: 'I need to renew my membership.', textAr: 'أحتاج إلى تجديد عضويتي.' },
+  { levelId: 9, orderIndex: 6, textEn: 'What documents are required?', textAr: 'ما هي المستندات المطلوبة؟' },
+  { levelId: 9, orderIndex: 7, textEn: 'Can I book an appointment online?', textAr: 'هل يمكنني حجز موعد عبر الإنترنت؟' },
+  { levelId: 9, orderIndex: 8, textEn: 'How long does the process take?', textAr: 'كم يستغرق هذا الإجراء؟' },
+  { levelId: 9, orderIndex: 9, textEn: 'I did not receive the confirmation email.', textAr: 'لم أستلم رسالة التأكيد الإلكترونية.' },
+  { levelId: 9, orderIndex: 10, textEn: 'Could you explain the next step?', textAr: 'هل يمكنك شرح الخطوة التالية؟' },
+]
+
+const level10Sentences = [
+  { levelId: 10, orderIndex: 1, textEn: 'Let us align on the project priorities.', textAr: 'دعنا نتفق على أولويات المشروع.' },
+  { levelId: 10, orderIndex: 2, textEn: 'We need to review the timeline and risks.', textAr: 'نحتاج إلى مراجعة الجدول الزمني والمخاطر.' },
+  { levelId: 10, orderIndex: 3, textEn: 'Could you share the updated report by noon?', textAr: 'هل يمكنك مشاركة التقرير المحدث قبل الظهر؟' },
+  { levelId: 10, orderIndex: 4, textEn: 'I suggest we focus on measurable outcomes.', textAr: 'أقترح أن نركز على نتائج قابلة للقياس.' },
+  { levelId: 10, orderIndex: 5, textEn: 'Please escalate blockers as soon as possible.', textAr: 'يرجى تصعيد العوائق بأسرع وقت ممكن.' },
+  { levelId: 10, orderIndex: 6, textEn: 'Can we schedule a follow-up meeting tomorrow?', textAr: 'هل يمكننا جدولة اجتماع متابعة غدًا؟' },
+  { levelId: 10, orderIndex: 7, textEn: 'The client requested a revised proposal.', textAr: 'طلب العميل عرضًا معدلًا.' },
+  { levelId: 10, orderIndex: 8, textEn: 'Let us finalize the action items.', textAr: 'دعنا ننهي بنود العمل.' },
+  { levelId: 10, orderIndex: 9, textEn: 'Thanks everyone for the productive discussion.', textAr: 'شكرًا للجميع على النقاش المثمر.' },
+  { levelId: 10, orderIndex: 10, textEn: 'We are on track to meet the deadline.', textAr: 'نحن على المسار الصحيح للالتزام بالموعد النهائي.' },
+]
+
 // ─────────────────────────────────────────
 // PLACEMENT TEST QUESTIONS
-// 2 per level = 14 total, covers all 7 levels
+// Pool: ≥4 per level (API picks 2 random per level + shuffles) so users don’t share the same items
 // ─────────────────────────────────────────
 
 async function seedPlacementQuestions() {
@@ -434,6 +493,91 @@ async function seedPlacementQuestions() {
       correctAr: 'كم عدد الموظفين في هذه الشركة؟',
       options: ['كم عدد الموظفين في هذه الشركة؟', 'كم سعر هذا المنتج؟', 'كم مدة الانتظار؟', 'كم عمرك؟'],
       targetLevel: 7, orderIndex: 14,
+    },
+    // Extra pool per level (random selection picks 2 of ≥4)
+    {
+      sentenceEn: 'How much is the fare to the airport?',
+      correctAr: 'كم تكلفة التوصيل إلى المطار؟',
+      options: ['كم تكلفة التوصيل إلى المطار؟', 'أين تقع محطة الباص الأقرب؟', 'متى يغادر القطار؟', 'أحتاج تذكرة ذهاب وعودة.'],
+      targetLevel: 1, orderIndex: 15,
+    },
+    {
+      sentenceEn: 'When does the next train leave?',
+      correctAr: 'متى يغادر القطار التالي؟',
+      options: ['متى يغادر القطار التالي؟', 'متى موعد الوصول؟', 'أين مكتب التذاكر؟', 'هل يمكنني الدفع بالبطاقة؟'],
+      targetLevel: 1, orderIndex: 16,
+    },
+    {
+      sentenceEn: 'I need a doctor quickly.',
+      correctAr: 'أحتاج إلى طبيب بسرعة.',
+      options: ['أحتاج إلى طبيب بسرعة.', 'أين أقرب مستشفى؟', 'لدي حرارة مرتفعة.', 'أشعر بالدوخة.'],
+      targetLevel: 2, orderIndex: 17,
+    },
+    {
+      sentenceEn: 'I have a strong headache.',
+      correctAr: 'عندي صداع قوي.',
+      options: ['عندي صداع قوي.', 'لدي حساسية من الفول السوداني.', 'أين غرفة الطوارئ؟', 'أحتاج مسكن للألم.'],
+      targetLevel: 2, orderIndex: 18,
+    },
+    {
+      sentenceEn: 'What time does work finish?',
+      correctAr: 'متى ينتهي وقت العمل؟',
+      options: ['متى ينتهي وقت العمل؟', 'متى يبدأ وقت العمل؟', 'لدي اجتماع مهم غدًا.', 'أين غرفة الاجتماعات؟'],
+      targetLevel: 3, orderIndex: 19,
+    },
+    {
+      sentenceEn: 'I need to print this file.',
+      correctAr: 'أحتاج أن أطبع هذا الملف.',
+      options: ['أحتاج أن أطبع هذا الملف.', 'هل يمكنك شرح هذا لي؟', 'أريد أن أقدم عرضًا تقديميًا.', 'أنا مشغول جدًا الآن.'],
+      targetLevel: 3, orderIndex: 20,
+    },
+    {
+      sentenceEn: 'The bill, please.',
+      correctAr: 'الحساب من فضلك.',
+      options: ['الحساب من فضلك.', 'هل يمكن أن يكون الطعام غير حار؟', 'أريد طاولة لشخصين.', 'الطعام لذيذ جدًا.'],
+      targetLevel: 4, orderIndex: 21,
+    },
+    {
+      sentenceEn: 'Do you serve desserts?',
+      correctAr: 'هل تقدمون حلويات؟',
+      options: ['هل تقدمون حلويات؟', 'أعذرني، هذا ليس ما طلبته.', 'القهوة بدون سكر من فضلك.', 'هل يمكنني الدفع بالبطاقة؟'],
+      targetLevel: 4, orderIndex: 22,
+    },
+    {
+      sentenceEn: 'How much does this product cost, please?',
+      correctAr: 'بكم سعر هذا المنتج من فضلك؟',
+      options: ['بكم سعر هذا المنتج من فضلك؟', 'إذا اشتريت قطعتين، هل يمكنني الحصول على خصم؟', 'هل لديكم مقاسات أخرى؟', 'أريد استرجاع هذا المنتج.'],
+      targetLevel: 5, orderIndex: 23,
+    },
+    {
+      sentenceEn: 'Can I try this shirt on?',
+      correctAr: 'هل يمكنني تجربة هذا القميص؟',
+      options: ['هل يمكنني تجربة هذا القميص؟', 'متى سيكون هذا المنتج متوفرًا مرة أخرى؟', 'أين غرفة القياس؟', 'لا أحتاج إلى كيس، شكرًا.'],
+      targetLevel: 5, orderIndex: 24,
+    },
+    {
+      sentenceEn: 'What is your name, please?',
+      correctAr: 'ما اسمك من فضلك؟',
+      options: ['ما اسمك من فضلك؟', 'منذ متى وأنت تعيش هنا؟', 'من أين أنت؟', 'هل تتحدث الإنجليزية؟'],
+      targetLevel: 6, orderIndex: 25,
+    },
+    {
+      sentenceEn: 'Could you repeat that, please?',
+      correctAr: 'هل يمكنك تكرار ذلك من فضلك؟',
+      options: ['هل يمكنك تكرار ذلك من فضلك؟', 'هل يمكنك أن تخبرني أكثر عن نفسك؟', 'ما معنى هذه الكلمة؟', 'أراك لاحقًا.'],
+      targetLevel: 6, orderIndex: 26,
+    },
+    {
+      sentenceEn: 'Can we discuss this later?',
+      correctAr: 'هل يمكننا مناقشة هذا لاحقًا؟',
+      options: ['هل يمكننا مناقشة هذا لاحقًا؟', 'كم عدد الموظفين في هذه الشركة؟', 'أريد نفس الطبق لكن بحجم صغير.', 'هذا موضوع مهم جدًا.'],
+      targetLevel: 7, orderIndex: 27,
+    },
+    {
+      sentenceEn: 'I agree with your opinion.',
+      correctAr: 'أوافق على رأيك.',
+      options: ['أوافق على رأيك.', 'أريد نفس الطبق لكن بحجم صغير.', 'هل يمكنك شرح هذا لي؟', 'متى موعد الامتحان القادم؟'],
+      targetLevel: 7, orderIndex: 28,
     },
   ]
 
@@ -713,7 +857,23 @@ async function seedShadowingStories() {
   ]
 
   for (const story of stories) {
-    await prisma.story.create({ data: story })
+    const existing = await prisma.story.findFirst({
+      where: { levelId: story.levelId, orderIndex: story.orderIndex },
+    })
+
+    if (existing) {
+      // Update text/titles but preserve audioUrl and wordsTiming
+      await prisma.story.update({
+        where: { id: existing.id },
+        data: {
+          titleAr: story.titleAr,
+          titleEn: story.titleEn,
+          fullText: story.fullText,
+        },
+      })
+    } else {
+      await prisma.story.create({ data: story })
+    }
   }
 
   console.log(`  ✓ ${stories.length} shadowing stories seeded`)
@@ -729,7 +889,7 @@ async function seedQuizzes() {
   await prisma.userQuizAttempt.deleteMany({})
   await prisma.quizQuestion.deleteMany({})
   await prisma.levelQuiz.deleteMany({})
-  for (let levelId = 1; levelId <= 6; levelId++) {
+  for (let levelId = 1; levelId <= 10; levelId++) {
     const quiz = await prisma.levelQuiz.create({
       data: {
         levelId,
@@ -785,7 +945,7 @@ async function seedQuizzes() {
     await prisma.quizQuestion.createMany({ data: questions })
   }
 
-  console.log(`  ✓ Quizzes seeded for 6 levels`)
+  console.log(`  ✓ Quizzes seeded for 10 levels`)
 }
 
 // ─────────────────────────────────────────
@@ -795,10 +955,11 @@ async function seedQuizzes() {
 async function seedGames() {
   console.log('🎮 Seeding games...')
 
+  await prisma.userGameProgress.deleteMany({})
   await prisma.gameQuestion.deleteMany({})
   await prisma.game.deleteMany({})
 
-  for (let levelId = 1; levelId <= 7; levelId++) {
+  for (let levelId = 1; levelId <= 10; levelId++) {
     const sentences = await prisma.sentence.findMany({
       where: { levelId },
       orderBy: { orderIndex: 'asc' }
@@ -806,13 +967,15 @@ async function seedGames() {
 
     if (sentences.length === 0) continue
 
-    const difficulties = [
-      { type: Difficulty.EASY, titleAr: 'مستوى سهل', index: 1 },
-      { type: Difficulty.MEDIUM, titleAr: 'مستوى متوسط', index: 2 },
-      { type: Difficulty.HARD, titleAr: 'مستوى صعب', index: 3 },
+    const gameConfigs = [
+      { type: Difficulty.EASY, titleAr: 'سهل 1', index: 1 },
+      { type: Difficulty.MEDIUM, titleAr: 'متوسط 1', index: 2 },
+      { type: Difficulty.HARD, titleAr: 'صعب 1', index: 3 },
+      { type: Difficulty.EASY, titleAr: 'سهل 2', index: 4 },
+      { type: Difficulty.MEDIUM, titleAr: 'متوسط 2', index: 5 },
     ]
 
-    for (const diff of difficulties) {
+    for (const diff of gameConfigs) {
       const game = await prisma.game.create({
         data: {
           levelId,

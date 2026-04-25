@@ -12,62 +12,96 @@ function getMonthPeriod(date: Date): string {
   return `${year}-${month}`;
 }
 
+function getAllTimePeriod(): string {
+  return 'all-time';
+}
+
 export async function addPoints(userId: string, points: number): Promise<void> {
   const now = new Date();
   const weekPeriod = getWeekPeriod(now);
   const monthPeriod = getMonthPeriod(now);
+  const allTimePeriod = getAllTimePeriod();
 
-  // Update user's total points
-  await prisma.user.update({
-    where: { id: userId },
-    data: { points: { increment: points } },
+  // Update weekly leaderboard entry
+  await prisma.leaderboardEntry.upsert({
+    where: { userId_period: { userId, period: weekPeriod } },
+    update: { points: { increment: points } },
+    create: { userId, period: weekPeriod, points },
   });
 
-  // Note: LeaderboardEntry model needs to be added to schema
-  // For now, we'll calculate leaderboard on-the-fly from user points
+  // Update monthly leaderboard entry
+  await prisma.leaderboardEntry.upsert({
+    where: { userId_period: { userId, period: monthPeriod } },
+    update: { points: { increment: points } },
+    create: { userId, period: monthPeriod, points },
+  });
+
+  // Update all-time leaderboard entry
+  await prisma.leaderboardEntry.upsert({
+    where: { userId_period: { userId, period: allTimePeriod } },
+    update: { points: { increment: points } },
+    create: { userId, period: allTimePeriod, points },
+  });
 }
 
+/**
+ * Single source of truth: LeaderboardEntry rows (updated by gamification addPoints),
+ * merged with all active students so users without a row show 0 points and correct rank.
+ */
+export async function getLeaderboardForPeriod(period: 'weekly' | 'monthly' | 'all-time') {
+  const periodStr =
+    period === 'weekly'
+      ? getWeekPeriod(new Date())
+      : period === 'monthly'
+        ? getMonthPeriod(new Date())
+        : getAllTimePeriod();
+
+  const [students, periodEntries] = await Promise.all([
+    prisma.user.findMany({
+      where: { isActive: true, role: 'STUDENT' },
+      select: { id: true, name: true, avatarUrl: true, currentLevel: true },
+    }),
+    prisma.leaderboardEntry.findMany({
+      where: { period: periodStr },
+      select: { userId: true, points: true },
+    }),
+  ]);
+
+  const pointsByUser = new Map(periodEntries.map((e) => [e.userId, e.points]));
+
+  const rows = students.map((u) => ({
+    userId: u.id,
+    name: u.name,
+    avatarUrl: u.avatarUrl ?? null,
+    currentLevel: u.currentLevel,
+    points: pointsByUser.get(u.id) ?? 0,
+  }));
+
+  rows.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points;
+    return a.name.localeCompare(b.name, 'ar', { sensitivity: 'base' });
+  });
+
+  return rows.map((row, index) => ({
+    rank: index + 1,
+    ...row,
+  }));
+}
+
+/** @deprecated Prefer getLeaderboardForPeriod + API controller; kept for older callers */
 export async function getLeaderboard(period: 'weekly' | 'monthly' | 'all-time', userId: string) {
-  // For now, use User.points for all-time leaderboard
-  // TODO: Add LeaderboardEntry model for weekly/monthly tracking
-  
-  const users = await prisma.user.findMany({
-    where: {
-      role: 'STUDENT', // Only students on leaderboard
-    },
-    orderBy: { points: 'desc' },
-    take: 50,
-    select: {
-      id: true,
-      name: true,
-      avatarUrl: true,
-      points: true,
-      currentLevel: true,
-    },
-  });
-
-  const currentUser = await prisma.user.findUnique({
-    where: { id: userId },
-    select: { points: true },
-  });
-
-  const currentUserRank = currentUser
-    ? users.findIndex((u) => u.id === userId) + 1
-    : null;
+  const full = await getLeaderboardForPeriod(period);
+  const top50 = full.slice(0, 50);
+  const me = full.find((e) => e.userId === userId);
 
   return {
     period,
     updatedAt: new Date().toISOString(),
-    currentUserRank: currentUserRank || null,
-    currentUserPoints: currentUser?.points || 0,
-    entries: users.map((user, index) => ({
-      rank: index + 1,
-      userId: user.id,
-      name: user.name,
-      avatarUrl: user.avatarUrl,
-      points: user.points,
-      currentLevel: user.currentLevel,
-      isCurrentUser: user.id === userId,
+    currentUserRank: me?.rank ?? null,
+    currentUserPoints: me?.points ?? 0,
+    entries: top50.map((entry) => ({
+      ...entry,
+      isCurrentUser: entry.userId === userId,
     })),
   };
 }

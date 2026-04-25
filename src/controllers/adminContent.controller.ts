@@ -26,7 +26,7 @@ export const adminContentController = {
 
   updateSentence: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { textEn, textAr, orderIndex, isActive } = req.body;
 
       const sentence = await prisma.sentence.update({
@@ -48,7 +48,7 @@ export const adminContentController = {
 
   deleteSentence: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       await prisma.sentence.update({
         where: { id },
@@ -64,7 +64,7 @@ export const adminContentController = {
 
   uploadSentenceAudio: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       if (!req.file) {
         return errorResponse(res, 'No audio file uploaded', 400);
@@ -115,7 +115,7 @@ export const adminContentController = {
 
   updateGame: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { titleAr, orderIndex, isActive } = req.body;
 
       const game = await prisma.game.update({
@@ -136,7 +136,7 @@ export const adminContentController = {
 
   addGameQuestion: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { questionData, correctAnswer, sentenceId } = req.body;
 
       const count = await prisma.gameQuestion.count({ where: { gameId: id } });
@@ -160,7 +160,7 @@ export const adminContentController = {
 
   deleteGameQuestion: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { qId } = req.params;
+      const { qId } = req.params as { qId: string };
 
       await prisma.gameQuestion.delete({ where: { id: qId } });
 
@@ -173,7 +173,7 @@ export const adminContentController = {
 
   updateQuiz: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { passScore, maxAttempts, timeLimit, questions } = req.body;
 
       if (questions) {
@@ -237,7 +237,7 @@ export const adminContentController = {
 
   updateStory: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { titleAr, titleEn, fullText, orderIndex, isActive } = req.body;
 
       const story = await prisma.story.update({
@@ -254,6 +254,31 @@ export const adminContentController = {
       return successResponse(res, story, 'Story updated');
     } catch (error) {
       console.error('Update story error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  listBlogPosts: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 50, 100);
+      const offset = (page - 1) * limit;
+
+      const [posts, total] = await Promise.all([
+        prisma.blogPost.findMany({
+          orderBy: { updatedAt: 'desc' },
+          skip: offset,
+          take: limit,
+        }),
+        prisma.blogPost.count(),
+      ]);
+
+      return successResponse(res, {
+        posts,
+        pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+      });
+    } catch (error) {
+      console.error('List blog posts error:', error);
       return errorResponse(res, 'Server error', 500);
     }
   },
@@ -296,7 +321,7 @@ export const adminContentController = {
 
   updateBlogPost: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { title, content, excerpt, coverColor, category, tags, metaDesc, keywords } = req.body;
 
       let readingTime;
@@ -329,7 +354,7 @@ export const adminContentController = {
 
   publishBlogPost: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const post = await prisma.blogPost.update({
         where: { id },
@@ -348,7 +373,7 @@ export const adminContentController = {
 
   deleteBlogPost: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       await prisma.blogPost.update({
         where: { id },

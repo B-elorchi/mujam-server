@@ -17,7 +17,6 @@ export const levelController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
 
       const levels = await prisma.level.findMany({
         where: { isActive: true },
@@ -55,7 +54,7 @@ export const levelController = {
             where: { levelId: level.id },
           });
 
-          const isLocked = level.id > 2 && !hasPremiumAccess;
+          const isLocked = false;
 
           return {
             ...level,
@@ -75,7 +74,7 @@ export const levelController = {
 
   getLevel: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const levelId = parseInt(id);
 
       const level = await prisma.level.findUnique({
@@ -103,8 +102,7 @@ export const levelController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
-      const isLocked = level.id > 2 && !hasPremiumAccess;
+      const isLocked = false;
 
       return successResponse(res, { ...level, isLocked });
     } catch (error) {
@@ -115,7 +113,7 @@ export const levelController = {
 
   getSentences: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const levelId = parseInt(id);
       const page = req.query.page as string;
       const limit = req.query.limit as string;
@@ -130,7 +128,6 @@ export const levelController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
 
       const level = await prisma.level.findUnique({
         where: { id: levelId },
@@ -139,10 +136,6 @@ export const levelController = {
 
       if (!level) {
         return errorResponse(res, 'Level not found', 404);
-      }
-
-      if (!level.isFree && !hasPremiumAccess) {
-        return errorResponse(res, 'Premium subscription required', 403);
       }
 
       const [sentences, total] = await Promise.all([
@@ -191,7 +184,7 @@ export const levelController = {
 
   markListened: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { sentenceId } = req.params;
+      const { sentenceId } = req.params as { sentenceId: string };
 
       await prisma.userSentenceProgress.upsert({
         where: {
@@ -221,7 +214,7 @@ export const levelController = {
 
   markCompleted: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { sentenceId } = req.params;
+      const { sentenceId } = req.params as { sentenceId: string };
 
       const progress = await prisma.userSentenceProgress.upsert({
         where: {
@@ -296,7 +289,7 @@ export const levelController = {
 
   getProgress: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const levelId = parseInt(id);
 
       const completion = await prisma.userLevelCompletion.findUnique({

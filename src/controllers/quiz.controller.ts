@@ -19,7 +19,6 @@ export const quizController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const hasPremiumAccess = user.plan === 'PREMIUM' || user.role === 'ADMIN';
 
       const level = await prisma.level.findUnique({
         where: { id: levelId },
@@ -28,10 +27,6 @@ export const quizController = {
 
       if (!level) {
         return errorResponse(res, 'Level not found', 404);
-      }
-
-      if (!level.isFree && !hasPremiumAccess) {
-        return errorResponse(res, 'Premium subscription required', 403);
       }
 
       const quiz = await prisma.levelQuiz.findUnique({

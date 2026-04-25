@@ -24,6 +24,7 @@ router.patch('/quizzes/:id', adminContentController.updateQuiz);
 router.post('/stories', uploadAudio.single('audio'), adminContentController.createStory);
 router.patch('/stories/:id', adminContentController.updateStory);
 
+router.get('/blog', adminContentController.listBlogPosts);
 router.post('/blog', adminContentController.createBlogPost);
 router.patch('/blog/:id', adminContentController.updateBlogPost);
 router.post('/blog/:id/publish', adminContentController.publishBlogPost);

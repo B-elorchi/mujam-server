@@ -206,11 +206,11 @@ export async function generateCertificate(userId: string): Promise<string> {
   await page.setContent(html, { waitUntil: 'networkidle0' });
   await page.setViewport({ width: 1200, height: 850 });
 
-  const pdfBuffer = await page.pdf({
+  const pdfBuffer = Buffer.from(await page.pdf({
     width: '1200px',
     height: '850px',
     printBackground: true,
-  });
+  }));
 
   await browser.close();
 

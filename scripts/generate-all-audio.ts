@@ -42,9 +42,9 @@ async function generateAudioForLevel(levelId: number) {
 
 async function main() {
   console.log('🌱 Starting bulk audio generation for all levels...\n');
-  console.log('⏳ This will take approximately 10-15 minutes for 180 sentences\n');
+  console.log('⏳ This will take approximately 15-20 minutes for all sentences across 10 levels\n');
 
-  const levels = [1, 2, 3, 4, 5, 6, 7];
+  const levels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
   const results = [];
 
   for (const levelId of levels) {
@@ -53,7 +53,7 @@ async function main() {
       results.push({ levelId, success: true, ...result });
       
       // Wait 2 seconds between levels to avoid rate limiting
-      if (levelId < 7) {
+      if (levelId < 10) {
         console.log('⏸️  Waiting 2 seconds before next level...');
         await new Promise(resolve => setTimeout(resolve, 2000));
       }

@@ -16,6 +16,18 @@ export async function transcribeAudio(
     language?: string,
     prompt?: string
 ): Promise<STTResult> {
+    // Check Deepgram API key is configured
+    if (!process.env.DEEPGRAM_API_KEY) {
+        console.error('DEEPGRAM_API_KEY is not configured')
+        throw new Error('CONFIG_ERROR: Speech recognition service is not properly configured.')
+    }
+
+    // Check minimum audio size (at least 1KB for valid audio)
+    if (buffer.length < 1024) {
+        console.warn('Audio buffer too small:', buffer.length, 'bytes')
+        throw new Error('AUDIO_TOO_SHORT: The recording is too short. Please speak for at least 1-2 seconds.')
+    }
+
     // Check if buffer has actual audio data (not just silence)
     const hasAudioData = buffer.some(byte => byte !== 0)
 
@@ -29,28 +41,32 @@ export async function transcribeAudio(
 
     if (!hasAudioData) {
         console.warn('Audio buffer appears to be empty or silent')
+        throw new Error('AUDIO_SILENT: No audio detected. Please check your microphone and try again.')
     }
 
     // Use Deepgram for speech-to-text transcription
     // Use Nova-3 model which supports both Arabic and English
-    const detectedLanguage = language || 'en'
-    
+    // If no language specified, use 'multi' for auto-detection (Nova-3 supports this)
+    const detectedLanguage = language || 'multi'
+
     console.log('STT Language Detection:', {
         providedLanguage: language,
         detectedLanguage,
         willUseModel: 'nova-3'
     })
-    
+
     const transcriptionOptions: any = {
-        // Nova-3 supports both Arabic and English
+        // Nova-3 supports both Arabic and English with auto-detection
         model: 'nova-3',
-        language: detectedLanguage,
         punctuate: true,
         smart_format: true,
+        words: true,
         diarize: false,
         utterances: false,
+        // Only specify language if explicitly provided, otherwise let Nova-3 auto-detect
+        ...(detectedLanguage !== 'multi' && { language: detectedLanguage }),
     }
-    
+
     console.log('STT Transcription Options:', transcriptionOptions)
 
     const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
@@ -66,7 +82,7 @@ export async function transcribeAudio(
     console.log('Deepgram raw result:', JSON.stringify(result, null, 2))
 
     if (!result?.results?.channels?.[0]?.alternatives?.[0]) {
-        throw new Error('No transcription result from Deepgram')
+        throw new Error('NO_RESULT: No transcription result from Deepgram. Please try speaking more clearly.')
     }
 
     const alternative = result.results.channels[0].alternatives[0]
@@ -81,12 +97,23 @@ export async function transcribeAudio(
         language: (metadata as any)?.detected_language,
         duration: metadata?.duration,
         hasWords: !!alternative.words?.length,
-        wordCount: alternative.words?.length || 0
+        wordCount: alternative.words?.length || 0,
+        confidence: alternative.confidence
     })
 
+    // Handle empty transcript gracefully - return empty result instead of throwing
     if (!transcript) {
-        console.error('Empty transcript - full alternative:', alternative)
-        throw new Error('Deepgram returned empty transcript')
+        console.warn('Empty transcript received - speech may not be recognized:', {
+            confidence: alternative.confidence,
+            words: alternative.words?.length || 0
+        })
+        // Return empty result with warning flag
+        return {
+            transcript: '',
+            language: (metadata as any)?.detected_language || 'unknown',
+            duration: metadata?.duration || 0,
+            words: [],
+        }
     }
 
     const sttResult: STTResult = {
@@ -117,8 +144,9 @@ export async function generateWordTiming(
 ): Promise<Array<{ word: string; start: number; end: number }>> {
     console.log('Generating word timing for shadowing story...')
 
-    // Shadowing stories are in English, so pass 'en' as language and expectedText as prompt
-    const result = await transcribeAudio(userId, buffer, mimeType, 'en', expectedText)
+    // Auto-detect language instead of hardcoding 'en'
+    // This allows both Arabic and English stories to work correctly
+    const result = await transcribeAudio(userId, buffer, mimeType, undefined, expectedText)
 
     if (!result.words || result.words.length === 0) {
         console.warn('No word-level timing returned from Deepgram')

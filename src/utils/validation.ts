@@ -114,8 +114,8 @@ export const validateRequest = (schema: z.ZodSchema) => {
       if (error instanceof z.ZodError) {
         return res.status(400).json({
           success: false,
-          message: error.errors[0].message,
-          errors: error.errors,
+          message: error.issues[0].message,
+          errors: error.issues,
         });
       }
       next(error);

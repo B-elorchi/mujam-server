@@ -55,7 +55,7 @@ export const adminUserController = {
 
   getUser: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       const user = await prisma.user.findUnique({
         where: { id },
@@ -88,7 +88,7 @@ export const adminUserController = {
 
   updateUser: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { role, plan, currentLevel } = req.body;
 
       const user = await prisma.user.update({
@@ -110,7 +110,7 @@ export const adminUserController = {
 
   suspendUser: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       await prisma.$transaction([
         prisma.user.update({ where: { id }, data: { isActive: false } }),
@@ -126,7 +126,7 @@ export const adminUserController = {
 
   unsuspendUser: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       await prisma.user.update({
         where: { id },
@@ -144,7 +144,7 @@ export const adminUserController = {
     try {
       const { page, limit, offset } = getPagination(req.query.page as string, req.query.limit as string);
 
-      const [subscriptions, total] = await Promise.all([
+      const [subscriptions, total, stats] = await Promise.all([
         prisma.subscription.findMany({
           skip: offset,
           take: limit,
@@ -152,14 +152,51 @@ export const adminUserController = {
           orderBy: { createdAt: 'desc' },
         }),
         prisma.subscription.count(),
+        Promise.all([
+          prisma.subscription.findMany({
+            where: { isActive: true },
+            select: { priceMonthly: true },
+          }),
+          prisma.subscription.count({ where: { isActive: true } }),
+          prisma.subscription.count({ where: { isActive: false } }),
+          prisma.subscription.count({
+            where: {
+              isActive: true,
+              trialEndsAt: { gt: new Date() },
+            },
+          }),
+        ]).then(([activeRows, activeCount, cancelledCount, trialCount]) => ({
+          mrr: activeRows.reduce((sum, s) => sum + s.priceMonthly, 0),
+          activeCount,
+          cancelledCount,
+          trialCount,
+        })),
       ]);
 
       return successResponse(res, {
         subscriptions,
         pagination: { total, page, limit, totalPages: Math.ceil(total / limit) },
+        stats,
       });
     } catch (error) {
       console.error('Get subscriptions error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  getCertificates: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      const certificates = await prisma.certificate.findMany({
+        orderBy: { issuedAt: 'desc' },
+        take: 200,
+        include: {
+          user: { select: { name: true, email: true } },
+        },
+      });
+
+      return successResponse(res, { certificates });
+    } catch (error) {
+      console.error('Get certificates error:', error);
       return errorResponse(res, 'Server error', 500);
     }
   },
@@ -207,7 +244,7 @@ export const adminUserController = {
 
   updateTeamRole: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { role } = req.body;
 
       await prisma.user.update({

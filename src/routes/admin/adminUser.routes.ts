@@ -14,6 +14,7 @@ router.patch('/users/:id', adminUserController.updateUser);
 router.post('/users/:id/suspend', adminUserController.suspendUser);
 router.post('/users/:id/unsuspend', adminUserController.unsuspendUser);
 router.get('/subscriptions', adminUserController.getSubscriptions);
+router.get('/certificates', adminUserController.getCertificates);
 router.get('/team', adminUserController.getTeam);
 router.post('/team/invite', adminUserController.inviteTeamMember);
 router.patch('/team/:id/role', adminUserController.updateTeamRole);

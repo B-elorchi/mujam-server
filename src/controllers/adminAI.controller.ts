@@ -119,7 +119,7 @@ export const adminAIController = {
 
   updateScenario: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
       const { nameAr, descriptionAr, systemPrompt, openingMessage, icon, isActive } = req.body;
 
       const scenario = await prisma.aIScenario.update({
@@ -143,7 +143,7 @@ export const adminAIController = {
 
   deleteScenario: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { id } = req.params;
+      const { id } = req.params as { id: string };
 
       await prisma.aIScenario.update({
         where: { id },
@@ -179,7 +179,7 @@ export const adminAIController = {
         return acc;
       }, {} as Record<string, number>);
 
-      const topUsers = await prisma.aiUsageLog.groupBy({
+      const topUsers = await prisma.aIUsageLog.groupBy({
         by: ['userId'],
         where: { createdAt: { gte: startDate } },
         _sum: { costUsd: true },
@@ -218,7 +218,7 @@ export const adminAIController = {
       monthStart.setDate(1);
       monthStart.setHours(0, 0, 0, 0);
 
-      const usage = await prisma.aiUsageLog.aggregate({
+      const usage = await prisma.aIUsageLog.aggregate({
         where: { createdAt: { gte: monthStart } },
         _sum: { costUsd: true },
       });
