@@ -1,37 +1,38 @@
-// Script to generate audio + word timing for all shadowing stories
-// Run with: npx ts-node scripts/generate-all-story-audio.ts
+// Script to generate audio + word timing for all shadowing stories (missing audio only).
+// Run with: ADMIN_TOKEN="jwt" npx ts-node scripts/generate-all-story-audio.ts
 
-import axios from 'axios';
-
-const API_BASE = process.env.API_BASE || 'http://localhost:4000/api';
+const API_BASE = (process.env.API_BASE || 'http://localhost:4000/api').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
 
 if (!ADMIN_TOKEN) {
   console.error('❌ Please set ADMIN_TOKEN environment variable');
-  console.log('   Example: ADMIN_TOKEN="your_jwt_token_here" npx ts-node scripts/generate-all-story-audio.ts');
+  console.log('   Example: ADMIN_TOKEN="your_jwt" npx ts-node scripts/generate-all-story-audio.ts');
   process.exit(1);
 }
 
 async function generateStoryAudio() {
   console.log('\n🎙️ Generating audio + word timing for all shadowing stories...');
 
+  const url = `${API_BASE}/admin/stories/bulk-generate-audio`;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 600_000);
   try {
-    const response = await axios.post(
-      `${API_BASE}/admin/stories/bulk-generate-audio`,
-      {},
-      {
-        headers: {
-          Authorization: `Bearer ${ADMIN_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 600000, // 10 minutes (each story needs TTS + STT calls)
-      }
-    );
-
-    return response.data;
-  } catch (error: any) {
-    console.error('❌ Story audio generation failed:', error.response?.data || error.message);
-    throw error;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ADMIN_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) {
+      throw new Error(`${res.status}: ${text.slice(0, 500)}`);
+    }
+    return text ? JSON.parse(text) : {};
+  } finally {
+    clearTimeout(id);
   }
 }
 

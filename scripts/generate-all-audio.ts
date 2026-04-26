@@ -1,95 +1,72 @@
-// Script to generate audio for all sentences in all levels
-// Run with: npx ts-node scripts/generate-all-audio.ts
+// Script to generate audio for all sentences in all levels (missing URLs only).
+// Run with: ADMIN_TOKEN="jwt" npx ts-node scripts/generate-all-audio.ts
+// Optional: API_BASE="https://your-host/api" LEVEL_IDS="1,2,3"
 
-import axios from 'axios';
-
-const API_BASE = 'http://localhost:4000/api';
-
-// You'll need to get an admin JWT token first
-// Login as admin and paste the token here
+const API_BASE = (process.env.API_BASE || 'http://localhost:4000/api').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+
+const LEVEL_IDS = (process.env.LEVEL_IDS || '1,2,3,4,5,6,7,8,9,10')
+  .split(',')
+  .map((s) => parseInt(s.trim(), 10))
+  .filter((n) => !Number.isNaN(n));
 
 if (!ADMIN_TOKEN) {
   console.error('❌ Please set ADMIN_TOKEN environment variable');
-  console.log('   Example: $env:ADMIN_TOKEN="your_jwt_token_here"');
-  console.log('   Then run: npx ts-node scripts/generate-all-audio.ts');
+  console.log('   Example: ADMIN_TOKEN="your_jwt" npx ts-node scripts/generate-all-audio.ts');
   process.exit(1);
 }
 
-async function generateAudioForLevel(levelId: number) {
-  console.log(`\n🎵 Generating audio for Level ${levelId}...`);
-  
+async function postBulkForLevel(levelId: number) {
+  const url = `${API_BASE}/admin/levels/${levelId}/sentences/bulk-generate-audio`;
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), 300_000);
   try {
-    const response = await axios.post(
-      `${API_BASE}/admin/levels/${levelId}/sentences/bulk-generate-audio`,
-      {},
-      {
-        headers: {
-          'Authorization': `Bearer ${ADMIN_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        timeout: 300000, // 5 minutes timeout (30 sentences * ~5 seconds each)
-      }
-    );
-
-    console.log(`✅ Level ${levelId} complete:`, response.data.message);
-    return response.data;
-  } catch (error: any) {
-    console.error(`❌ Level ${levelId} failed:`, error.response?.data || error.message);
-    throw error;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${ADMIN_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: '{}',
+      signal: controller.signal,
+    });
+    const text = await res.text();
+    if (!res.ok) throw new Error(`${res.status}: ${text.slice(0, 400)}`);
+    return text ? JSON.parse(text) : {};
+  } finally {
+    clearTimeout(id);
   }
 }
 
 async function main() {
-  console.log('🌱 Starting bulk audio generation for all levels...\n');
-  console.log('⏳ This will take approximately 15-20 minutes for all sentences across 10 levels\n');
+  console.log('🌱 Bulk sentence audio (missing only)…\n');
+  const results: { levelId: number; success: boolean; error?: string }[] = [];
 
-  const levels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-  const results = [];
-
-  for (const levelId of levels) {
+  for (const levelId of LEVEL_IDS) {
     try {
-      const result = await generateAudioForLevel(levelId);
-      results.push({ levelId, success: true, ...result });
-      
-      // Wait 2 seconds between levels to avoid rate limiting
-      if (levelId < 10) {
-        console.log('⏸️  Waiting 2 seconds before next level...');
-        await new Promise(resolve => setTimeout(resolve, 2000));
+      console.log(`\n🎵 Level ${levelId}…`);
+      const data = await postBulkForLevel(levelId);
+      console.log('   ✅', data.message || JSON.stringify(data).slice(0, 300));
+      results.push({ levelId, success: true });
+      if (LEVEL_IDS.indexOf(levelId) < LEVEL_IDS.length - 1) {
+        console.log('⏸️  Waiting 2 seconds…');
+        await new Promise((r) => setTimeout(r, 2000));
       }
-    } catch (error) {
-      results.push({ levelId, success: false, error: String(error) });
+    } catch (error: unknown) {
+      const msg = error instanceof Error ? error.message : String(error);
+      console.error(`   ❌ Level ${levelId}:`, msg);
+      results.push({ levelId, success: false, error: msg });
     }
   }
 
-  console.log('\n\n📊 Summary:');
-  console.log('═══════════════════════════════════════\n');
-  
-  let totalSuccess = 0;
-  let totalFailed = 0;
-
-  results.forEach(result => {
-    if (result.success) {
-      console.log(`✅ Level ${result.levelId}: ${result.message || 'Success'}`);
-      totalSuccess++;
-    } else {
-      console.log(`❌ Level ${result.levelId}: Failed`);
-      totalFailed++;
-    }
-  });
-
-  console.log('\n═══════════════════════════════════════');
-  console.log(`Total: ${totalSuccess} succeeded, ${totalFailed} failed`);
-  
-  if (totalFailed === 0) {
-    console.log('\n🎉 All audio files generated successfully!');
-  } else {
-    console.log('\n⚠️  Some levels failed. Check the errors above.');
-  }
+  console.log('\n📊 Summary:');
+  const ok = results.filter((r) => r.success).length;
+  const bad = results.filter((r) => !r.success).length;
+  console.log(`Succeeded: ${ok}, Failed: ${bad}`);
+  if (bad) process.exit(1);
 }
 
-main()
-  .catch((error) => {
-    console.error('\n❌ Script failed:', error);
-    process.exit(1);
-  });
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});
