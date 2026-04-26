@@ -236,23 +236,32 @@ export const adminSentenceController = {
   },
 
   // POST bulk generate audio for all sentences in a level
+  // Body: { "force": true } — delete existing files (best effort), regenerate normal + slow for every sentence in the level.
   bulkGenerateAudio: async (req: Request, res: Response): Promise<Response> => {
     try {
       const levelId = parseInt(req.params.levelId as string);
+      const force = Boolean((req.body as { force?: boolean })?.force);
 
-      // Get all sentences without audio
       const sentences = await prisma.sentence.findMany({
-        where: {
-          levelId,
-          OR: [
-            { audioUrlNormal: null },
-            { audioUrlSlow: null },
-          ],
-        },
+        where: force
+          ? { levelId }
+          : {
+              levelId,
+              OR: [
+                { audioUrlNormal: null },
+                { audioUrlSlow: null },
+                { audioUrlNormal: '' },
+                { audioUrlSlow: '' },
+              ],
+            },
       });
 
       if (sentences.length === 0) {
-        return successResponse(res, { generated: 0 }, 'جميع الجمل لديها صوت بالفعل');
+        return successResponse(
+          res,
+          { generated: 0, total: 0, force },
+          force ? 'لا توجد جمل في هذا المستوى' : 'جميع الجمل لديها صوت بالفعل'
+        );
       }
 
       let generated = 0;
@@ -260,37 +269,54 @@ export const adminSentenceController = {
 
       for (const sentence of sentences) {
         try {
-          // Generate normal speed if missing
-          if (!sentence.audioUrlNormal) {
+          let audioUrlNormal = sentence.audioUrlNormal;
+          let audioUrlSlow = sentence.audioUrlSlow;
+
+          const needNormal =
+            force || !audioUrlNormal || (typeof audioUrlNormal === 'string' && audioUrlNormal.trim() === '');
+          const needSlow =
+            force || !audioUrlSlow || (typeof audioUrlSlow === 'string' && audioUrlSlow.trim() === '');
+
+          if (needNormal) {
+            if (force && audioUrlNormal) {
+              await deleteFile(audioUrlNormal).catch((err) =>
+                console.warn(`Could not delete old normal audio for sentence ${sentence.id}:`, err)
+              );
+            }
             const normalBuffer = await textToSpeech(sentence.textEn, 'normal', req.userId);
-            const audioUrlNormal = await uploadFile(
+            audioUrlNormal = await uploadFile(
               'audioSentences',
               normalBuffer,
               `${sentence.id}-normal.mp3`,
               'audio/mpeg'
             );
-            await prisma.sentence.update({
-              where: { id: sentence.id },
-              data: { audioUrlNormal },
-            });
           }
 
-          // Generate slow speed if missing
-          if (!sentence.audioUrlSlow) {
+          if (needSlow) {
+            if (force && audioUrlSlow) {
+              await deleteFile(audioUrlSlow).catch((err) =>
+                console.warn(`Could not delete old slow audio for sentence ${sentence.id}:`, err)
+              );
+            }
             const slowBuffer = await textToSpeechSlow(sentence.textEn, req.userId);
-            const audioUrlSlow = await uploadFile(
+            audioUrlSlow = await uploadFile(
               'audioSentences',
               slowBuffer,
               `${sentence.id}-slow.mp3`,
               'audio/mpeg'
             );
-            await prisma.sentence.update({
-              where: { id: sentence.id },
-              data: { audioUrlSlow },
-            });
           }
 
-          generated++;
+          if (needNormal || needSlow) {
+            await prisma.sentence.update({
+              where: { id: sentence.id },
+              data: {
+                ...(needNormal && { audioUrlNormal }),
+                ...(needSlow && { audioUrlSlow }),
+              },
+            });
+            generated++;
+          }
         } catch (err: any) {
           console.error(`Failed to generate audio for sentence ${sentence.id}:`, err);
           errors.push(`Sentence ${sentence.id}: ${err.message}`);
@@ -300,6 +326,7 @@ export const adminSentenceController = {
       return successResponse(res, {
         generated,
         total: sentences.length,
+        force,
         errors: errors.length > 0 ? errors : undefined,
       }, `تم توليد الصوت لـ ${generated} جملة`);
     } catch (error) {

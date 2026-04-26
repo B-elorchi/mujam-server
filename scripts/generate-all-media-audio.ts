@@ -8,6 +8,9 @@
  *
  * Optional:
  *   LEVEL_IDS="1,2,3,4,5,6,7,8,9,10"   (default: 1–10)
+ *   FORCE_STORY_AUDIO=1                 (re-generate all active stories)
+ *   FORCE_SENTENCE_AUDIO=1              (re-generate all sentences per level, both speeds)
+ *   FORCE_MEDIA=1                       (same as setting both FORCE_* flags)
  */
 
 const API_BASE = (process.env.API_BASE || 'http://localhost:4000/api').replace(/\/$/, '');
@@ -18,7 +21,19 @@ const LEVEL_IDS = (process.env.LEVEL_IDS || '1,2,3,4,5,6,7,8,9,10')
   .map((s) => parseInt(s.trim(), 10))
   .filter((n) => !Number.isNaN(n));
 
-async function postJson(path: string, timeoutMs: number) {
+const FORCE_MEDIA = process.env.FORCE_MEDIA === '1' || process.env.FORCE_MEDIA === 'true';
+
+const FORCE_STORY_AUDIO =
+  FORCE_MEDIA ||
+  process.env.FORCE_STORY_AUDIO === '1' ||
+  process.env.FORCE_STORY_AUDIO === 'true';
+
+const FORCE_SENTENCE_AUDIO =
+  FORCE_MEDIA ||
+  process.env.FORCE_SENTENCE_AUDIO === '1' ||
+  process.env.FORCE_SENTENCE_AUDIO === 'true';
+
+async function postJson(path: string, timeoutMs: number, body: Record<string, unknown> = {}) {
   const p = path.startsWith('/') ? path : `/${path}`;
   const url = `${API_BASE}${p}`;
   const controller = new AbortController();
@@ -30,7 +45,7 @@ async function postJson(path: string, timeoutMs: number) {
         Authorization: `Bearer ${ADMIN_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: '{}',
+      body: JSON.stringify(body),
       signal: controller.signal,
     });
     const text = await res.text();
@@ -58,19 +73,31 @@ async function main() {
 
   console.log(`API_BASE: ${API_BASE}\n`);
 
-  console.log('📖 Shadowing stories (only rows with missing audio on server)…');
+  console.log(
+    FORCE_STORY_AUDIO
+      ? '📖 Shadowing stories (FORCE: regenerating all active stories)…'
+      : '📖 Shadowing stories (only rows with missing audio on server)…'
+  );
   try {
-    const storyRes = await postJson('/admin/stories/bulk-generate-audio', 600_000);
+    const storyRes = await postJson('/admin/stories/bulk-generate-audio', 600_000, {
+      ...(FORCE_STORY_AUDIO ? { force: true } : {}),
+    });
     console.log('   →', JSON.stringify(storyRes, null, 2).slice(0, 2000));
   } catch (e: any) {
     console.error('   Stories bulk failed:', e.message);
     process.exit(1);
   }
 
-  console.log('\n📝 Sentences per level (missing normal/slow only)…');
+  console.log(
+    FORCE_SENTENCE_AUDIO
+      ? '\n📝 Sentences per level (FORCE: regenerating every sentence)…'
+      : '\n📝 Sentences per level (missing normal/slow only)…'
+  );
   for (const levelId of LEVEL_IDS) {
     try {
-      const r = await postJson(`/admin/levels/${levelId}/sentences/bulk-generate-audio`, 300_000);
+      const r = await postJson(`/admin/levels/${levelId}/sentences/bulk-generate-audio`, 300_000, {
+        ...(FORCE_SENTENCE_AUDIO ? { force: true } : {}),
+      });
       console.log(`   Level ${levelId}:`, JSON.stringify(r).slice(0, 500));
       await new Promise((r) => setTimeout(r, 2000));
     } catch (e: any) {
@@ -78,7 +105,12 @@ async function main() {
     }
   }
 
-  console.log('\n✅ Done. Re-run anytime; endpoints skip rows that already have audio.');
+  console.log(
+    '\n✅ Done.' +
+      (FORCE_STORY_AUDIO || FORCE_SENTENCE_AUDIO
+        ? ' Force mode overwrote existing URLs where applied.'
+        : ' Re-run anytime; endpoints skip rows that already have audio.')
+  );
 }
 
 main().catch((e) => {

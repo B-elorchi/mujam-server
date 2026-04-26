@@ -1,4 +1,11 @@
-import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import {
+    S3Client,
+    PutObjectCommand,
+    DeleteObjectCommand,
+    HeadBucketCommand,
+    CreateBucketCommand,
+    PutBucketPolicyCommand,
+} from '@aws-sdk/client-s3';
 import { v4 as uuidv4 } from 'uuid';
 
 const s3Client = new S3Client({
@@ -13,11 +20,54 @@ const s3Client = new S3Client({
 
 const bucketName = process.env.MINIO_BUCKET || 'mujam';
 
+/** Anonymous read so browser <img src="…"> works (MinIO default is private). */
+function publicReadBucketPolicy(bucket: string): string {
+    return JSON.stringify({
+        Version: '2012-10-17',
+        Statement: [
+            {
+                Effect: 'Allow',
+                Principal: { AWS: ['*'] },
+                Action: ['s3:GetObject'],
+                Resource: [`arn:aws:s3:::${bucket}/*`],
+            },
+        ],
+    });
+}
+
+let ensurePublicReadPromise: Promise<void> | null = null;
+
+async function ensureBucketExistsAndPublicRead(): Promise<void> {
+    try {
+        await s3Client.send(new HeadBucketCommand({ Bucket: bucketName }));
+    } catch {
+        await s3Client.send(new CreateBucketCommand({ Bucket: bucketName }));
+    }
+    await s3Client.send(
+        new PutBucketPolicyCommand({
+            Bucket: bucketName,
+            Policy: publicReadBucketPolicy(bucketName),
+        })
+    );
+}
+
+function ensurePublicReadOnce(): Promise<void> {
+    if (!ensurePublicReadPromise) {
+        ensurePublicReadPromise = ensureBucketExistsAndPublicRead().catch((err) => {
+            ensurePublicReadPromise = null;
+            throw err;
+        });
+    }
+    return ensurePublicReadPromise;
+}
+
 export const uploadFile = async (
     file: Buffer,
     folder: string,
     contentType: string
 ): Promise<{ url: string; key: string }> => {
+    await ensurePublicReadOnce();
+
     const extension = contentType.split('/')[1] || 'bin';
     const fileName = `${uuidv4()}.${extension}`;
     const key = `${folder}/${fileName}`;
@@ -28,8 +78,6 @@ export const uploadFile = async (
             Key: key,
             Body: file,
             ContentType: contentType,
-            // If the bucket is public, we don't need ACL, but we can set it if supported
-            // ACL: 'public-read', 
         })
     );
 

@@ -258,17 +258,28 @@ export const adminStoryController = {
   },
 
   // POST bulk generate audio for all stories
+  // Body: { "force": true } — regenerate TTS + word timing for every active story (deletes previous file if any).
   bulkGenerateAudio: async (req: Request, res: Response): Promise<Response> => {
     try {
+      const force = Boolean((req.body as { force?: boolean })?.force);
+
       const stories = await prisma.story.findMany({
-        where: {
-          isActive: true,
-          audioUrl: null, // Only generate for stories without audio
-        },
+        where: force
+          ? { isActive: true }
+          : {
+              isActive: true,
+              OR: [{ audioUrl: null }, { audioUrl: '' }],
+            },
       });
 
       if (stories.length === 0) {
-        return successResponse(res, { generated: 0, total: 0 }, 'جميع القصص لديها ملفات صوتية بالفعل');
+        return successResponse(
+          res,
+          { generated: 0, total: 0, force },
+          force
+            ? 'لا توجد قصص نشطة'
+            : 'جميع القصص لديها ملفات صوتية بالفعل'
+        );
       }
 
       let generated = 0;
@@ -276,7 +287,13 @@ export const adminStoryController = {
 
       for (const story of stories) {
         try {
-          console.log(`Generating audio for story: ${story.titleAr}...`);
+          console.log(`Generating audio for story: ${story.titleAr}... (force=${force})`);
+
+          if (force && story.audioUrl) {
+            await deleteFile(story.audioUrl).catch((err) =>
+              console.warn(`Could not delete old story audio for ${story.id}:`, err)
+            );
+          }
 
           // Generate TTS audio
           const audioBuffer = await textToSpeech(story.fullText, 'normal', req.userId);

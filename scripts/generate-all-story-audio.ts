@@ -1,8 +1,14 @@
 // Script to generate audio + word timing for all shadowing stories (missing audio only).
 // Run with: ADMIN_TOKEN="jwt" npx ts-node scripts/generate-all-story-audio.ts
+// Re-generate every active story: FORCE_STORY_AUDIO=1 ADMIN_TOKEN="jwt" npx ts-node scripts/generate-all-story-audio.ts
 
 const API_BASE = (process.env.API_BASE || 'http://localhost:4000/api').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const FORCE_STORY_AUDIO =
+  process.env.FORCE_STORY_AUDIO === '1' ||
+  process.env.FORCE_STORY_AUDIO === 'true' ||
+  process.env.FORCE_MEDIA === '1' ||
+  process.env.FORCE_MEDIA === 'true';
 
 if (!ADMIN_TOKEN) {
   console.error('❌ Please set ADMIN_TOKEN environment variable');
@@ -23,7 +29,7 @@ async function generateStoryAudio() {
         Authorization: `Bearer ${ADMIN_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: '{}',
+      body: JSON.stringify(FORCE_STORY_AUDIO ? { force: true } : {}),
       signal: controller.signal,
     });
     const text = await res.text();

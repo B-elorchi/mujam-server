@@ -1,9 +1,14 @@
-// Script to generate audio for all sentences in all levels (missing URLs only).
-// Run with: ADMIN_TOKEN="jwt" npx ts-node scripts/generate-all-audio.ts
-// Optional: API_BASE="https://your-host/api" LEVEL_IDS="1,2,3"
+// Script to generate sentence audio for all levels.
+// Default: only missing normal/slow. From scratch (ignore DB URLs, delete old files): FORCE_SENTENCE_AUDIO=1
+// Run: ADMIN_TOKEN="jwt" npx ts-node scripts/generate-all-audio.ts
 
 const API_BASE = (process.env.API_BASE || 'http://localhost:4000/api').replace(/\/$/, '');
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN || '';
+const FORCE_SENTENCE_AUDIO =
+  process.env.FORCE_SENTENCE_AUDIO === '1' ||
+  process.env.FORCE_SENTENCE_AUDIO === 'true' ||
+  process.env.FORCE_MEDIA === '1' ||
+  process.env.FORCE_MEDIA === 'true';
 
 const LEVEL_IDS = (process.env.LEVEL_IDS || '1,2,3,4,5,6,7,8,9,10')
   .split(',')
@@ -27,7 +32,7 @@ async function postBulkForLevel(levelId: number) {
         Authorization: `Bearer ${ADMIN_TOKEN}`,
         'Content-Type': 'application/json',
       },
-      body: '{}',
+      body: JSON.stringify(FORCE_SENTENCE_AUDIO ? { force: true } : {}),
       signal: controller.signal,
     });
     const text = await res.text();
@@ -39,7 +44,11 @@ async function postBulkForLevel(levelId: number) {
 }
 
 async function main() {
-  console.log('🌱 Bulk sentence audio (missing only)…\n');
+  console.log(
+    FORCE_SENTENCE_AUDIO
+      ? '🌱 Bulk sentence audio (FORCE: all sentences in each level)…\n'
+      : '🌱 Bulk sentence audio (missing only)…\n'
+  );
   const results: { levelId: number; success: boolean; error?: string }[] = [];
 
   for (const levelId of LEVEL_IDS) {
