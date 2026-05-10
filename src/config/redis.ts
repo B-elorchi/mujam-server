@@ -7,7 +7,7 @@ let publisher: Redis | null = null;
  * Returns false when REDIS_URL is unset (notifications fall back to direct DB writes).
  */
 export function initRedis(): boolean {
-  const url = process.env.REDIS_URL || 'redis://localhost:6379';
+  const url = process.env.REDIS_URL;
   if (!url) {
     return false;
   }
