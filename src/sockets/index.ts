@@ -10,7 +10,7 @@ let io: SocketIOServer | null = null;
 export function initSockets(httpServer: HttpServer): SocketIOServer {
   const allowedOrigins = (
     process.env.FRONTEND_URL ||
-    'http://localhost:3000,http://localhost:3001,http://localhost:8080'
+    'https://app.moajam-sa.com,http://localhost:3000,http://localhost:3001,http://localhost:8080'
   )
     .split(',')
     .map((o) => o.trim());

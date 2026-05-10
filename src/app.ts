@@ -32,6 +32,9 @@ import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 export function buildApp(): Application {
   const app: Application = express();
 
+  // Trust the first proxy (nginx/Caddy) so express-rate-limit reads the real client IP
+  app.set('trust proxy', 1);
+
   app.use(helmet());
   const allowedOrigins = (
     process.env.FRONTEND_URL ||

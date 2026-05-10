@@ -158,14 +158,16 @@ export async function validateMembership(userId: string, roomId: string): Promis
 // ── Practice invitation helpers ────────────────────────────────────────────
 
 export async function getActiveMembers(currentUserId: string) {
-  const members = await prisma.communityMember.findMany({
-    where: { status: 'ACTIVE', userId: { not: currentUserId } },
-    distinct: ['userId'],
-    include: { user: { select: { id: true, name: true, avatarUrl: true } } },
+  // Return all active registered users (not just community members)
+  // so the practice partner finder works even before others have joined the community
+  const users = await prisma.user.findMany({
+    where: { isActive: true, id: { not: currentUserId } },
+    select: { id: true, name: true, avatarUrl: true },
+    orderBy: { name: 'asc' },
   });
 
   return Promise.all(
-    members.map(async (m) => {
+    users.map(async (u) => {
       const [hasRoom, hasPending] = await Promise.all([
         prisma.communityRoom.findFirst({
           where: {
@@ -173,7 +175,7 @@ export async function getActiveMembers(currentUserId: string) {
             isDefault: false,
             AND: [
               { members: { some: { userId: currentUserId, status: 'ACTIVE' } } },
-              { members: { some: { userId: m.userId, status: 'ACTIVE' } } },
+              { members: { some: { userId: u.id, status: 'ACTIVE' } } },
             ],
           },
           select: { id: true },
@@ -181,15 +183,15 @@ export async function getActiveMembers(currentUserId: string) {
         prisma.practiceInvitation.findFirst({
           where: {
             OR: [
-              { fromUserId: currentUserId, toUserId: m.userId, status: 'PENDING' },
-              { fromUserId: m.userId, toUserId: currentUserId, status: 'PENDING' },
+              { fromUserId: currentUserId, toUserId: u.id, status: 'PENDING' },
+              { fromUserId: u.id, toUserId: currentUserId, status: 'PENDING' },
             ],
           },
           select: { id: true },
         }),
       ]);
       return {
-        ...m.user,
+        ...u,
         alreadyConnected: !!(hasRoom || hasPending),
         existingRoomId: hasRoom?.id ?? null,
       };
