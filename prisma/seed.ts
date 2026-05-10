@@ -2,7 +2,7 @@
 // Complete seed file for معجم platform
 // Contains all sentences extracted from the 6 official PDF booklets
 
-import { PrismaClient, GameType, UserRole, SubscriptionPlan, Difficulty } from '@prisma/client'
+import { Prisma, PrismaClient, GameType, UserRole, SubscriptionPlan, Difficulty } from '@prisma/client'
 import bcrypt from 'bcryptjs'
 
 const prisma = new PrismaClient()
@@ -11,12 +11,16 @@ async function main() {
   console.log('🌱 Starting seed...')
 
   await seedLevels()
+  await seedGrammarLevelsAndReorder()
   await seedSentences()
+  await seedGrammarTips()
+  await seedGrammarRules()
   await seedPlacementQuestions()
   await seedAISettings()
   await seedAIScenarios()
   await seedAchievements()
   await seedPlatformSettings()
+  await seedCommunityRooms()
   await seedShadowingStories()
   await seedQuizzes()
   await seedGames()
@@ -33,27 +37,95 @@ async function seedLevels() {
   console.log('📚 Seeding levels...')
 
   const levels = [
-    { id: 1, titleAr: 'السفر والمواصلات', titleEn: 'Travel & Transportation', icon: '✈️', orderIndex: 1, isFree: true },
-    { id: 2, titleAr: 'المستشفى', titleEn: 'Hospital', icon: '🏥', orderIndex: 2, isFree: true },
-    { id: 3, titleAr: 'العمل والمدرسة', titleEn: 'Work & School', icon: '💼', orderIndex: 3, isFree: true },
-    { id: 4, titleAr: 'المطعم', titleEn: 'Restaurant', icon: '🍽️', orderIndex: 4, isFree: true },
-    { id: 5, titleAr: 'التسوق', titleEn: 'Shopping', icon: '🛒', orderIndex: 5, isFree: true },
-    { id: 6, titleAr: 'التعارف والعلاقات', titleEn: 'Introductions & Relations', icon: '🤝', orderIndex: 6, isFree: true },
-    { id: 7, titleAr: 'التعارف والتحية', titleEn: 'Greetings & Meetings', icon: '👋', orderIndex: 7, isFree: true },
-    { id: 8, titleAr: 'في الفندق', titleEn: 'Hotel & Accommodation', icon: '🏨', orderIndex: 8, isFree: true },
-    { id: 9, titleAr: 'الخدمات اليومية', titleEn: 'Daily Services', icon: '📮', orderIndex: 9, isFree: true },
-    { id: 10, titleAr: 'العمل المتقدم', titleEn: 'Advanced Workplace', icon: '📈', orderIndex: 10, isFree: true },
+    { id: 1, titleAr: 'السفر والمواصلات', titleEn: 'Travel & Transportation', icon: '✈️', orderIndex: 1, isFree: true, levelType: 'sentences' },
+    { id: 2, titleAr: 'المستشفى', titleEn: 'Hospital', icon: '🏥', orderIndex: 2, isFree: true, levelType: 'sentences' },
+    { id: 3, titleAr: 'العمل والمدرسة', titleEn: 'Work & School', icon: '💼', orderIndex: 3, isFree: true, levelType: 'sentences' },
+    { id: 4, titleAr: 'المطعم', titleEn: 'Restaurant', icon: '🍽️', orderIndex: 4, isFree: true, levelType: 'sentences' },
+    { id: 5, titleAr: 'التسوق', titleEn: 'Shopping', icon: '🛒', orderIndex: 5, isFree: true, levelType: 'sentences' },
+    { id: 6, titleAr: 'التعارف والعلاقات', titleEn: 'Introductions & Relations', icon: '🤝', orderIndex: 6, isFree: true, levelType: 'sentences' },
+    { id: 7, titleAr: 'التعارف والتحية', titleEn: 'Greetings & Meetings', icon: '👋', orderIndex: 7, isFree: true, levelType: 'sentences' },
+    { id: 8, titleAr: 'في الفندق', titleEn: 'Hotel & Accommodation', icon: '🏨', orderIndex: 8, isFree: true, levelType: 'sentences' },
+    { id: 9, titleAr: 'الخدمات اليومية', titleEn: 'Daily Services', icon: '📮', orderIndex: 9, isFree: true, levelType: 'sentences' },
+    { id: 10, titleAr: 'العمل المتقدم', titleEn: 'Advanced Workplace', icon: '📈', orderIndex: 10, isFree: true, levelType: 'sentences' },
   ]
 
   for (const level of levels) {
     await prisma.level.upsert({
       where: { id: level.id },
       create: level,
-      update: level,
+      // Never overwrite orderIndex on update — grammar seed reorders 8–13 in the DB
+      update: {
+        titleAr: level.titleAr,
+        titleEn: level.titleEn,
+        icon: level.icon,
+        isFree: level.isFree,
+        levelType: level.levelType,
+      },
     })
   }
 
   console.log(`  ✓ ${levels.length} levels seeded`)
+}
+
+/** Grammar levels use ids 11–13 so thematic levels (incl. hotel 8–10) keep stable FKs; orderIndex 8–10 puts them after level 7 in the learner path. */
+async function seedGrammarLevelsAndReorder() {
+  console.log('📐 Grammar levels + reorder (thematic Hotel→Work shifted to indices 11–13)...')
+
+  await prisma.level.update({ where: { id: 8 }, data: { orderIndex: 100 } })
+  await prisma.level.update({ where: { id: 9 }, data: { orderIndex: 101 } })
+  await prisma.level.update({ where: { id: 10 }, data: { orderIndex: 102 } })
+
+  const grammarLevels = [
+    {
+      id: 11,
+      titleAr: 'الضمائر',
+      titleEn: 'Pronouns',
+      icon: '👤',
+      orderIndex: 8,
+      isFree: true,
+      levelType: 'grammar',
+    },
+    {
+      id: 12,
+      titleAr: 'الأفعال الأساسية',
+      titleEn: 'Basic Verbs',
+      icon: '⚡',
+      orderIndex: 9,
+      isFree: true,
+      levelType: 'grammar',
+    },
+    {
+      id: 13,
+      titleAr: 'بناء الجمل',
+      titleEn: 'Sentence Structure',
+      icon: '🧱',
+      orderIndex: 10,
+      isFree: true,
+      levelType: 'grammar',
+    },
+  ]
+
+  for (const level of grammarLevels) {
+    await prisma.level.upsert({
+      where: { id: level.id },
+      create: { ...level, descriptionAr: null, isActive: true },
+      update: {
+        titleAr: level.titleAr,
+        titleEn: level.titleEn,
+        icon: level.icon,
+        orderIndex: level.orderIndex,
+        isFree: level.isFree,
+        levelType: level.levelType,
+        isActive: true,
+      },
+    })
+  }
+
+  await prisma.level.update({ where: { id: 8 }, data: { orderIndex: 11 } })
+  await prisma.level.update({ where: { id: 9 }, data: { orderIndex: 12 } })
+  await prisma.level.update({ where: { id: 10 }, data: { orderIndex: 13 } })
+
+  console.log('  ✓ Grammar levels 11–13 + thematic order 11–13')
 }
 
 // ─────────────────────────────────────────
@@ -811,6 +883,26 @@ async function seedPlatformSettings() {
   console.log('  ✓ Platform settings seeded')
 }
 
+async function seedCommunityRooms() {
+  console.log('💬 Seeding community rooms...')
+
+  const rooms = [
+    { name: 'General Community', nameAr: 'المجتمع العام', icon: '💬', type: 'PUBLIC' as const, isDefault: true },
+    { name: 'Conversation Practice', nameAr: 'تدريب المحادثة', icon: '🗣️', type: 'PRACTICE' as const, isDefault: true },
+    { name: 'Questions & Answers', nameAr: 'الأسئلة والأجوبة', icon: '❓', type: 'QA' as const, isDefault: true },
+  ]
+
+  for (const room of rooms) {
+    await prisma.communityRoom.upsert({
+      where: { id: room.name.toLowerCase().replace(/\s+/g, '-') },
+      update: { type: room.type },
+      create: { id: room.name.toLowerCase().replace(/\s+/g, '-'), ...room },
+    })
+  }
+
+  console.log(`  ✓ ${rooms.length} community rooms seeded`)
+}
+
 // ─────────────────────────────────────────
 // SHADOWING STORIES
 // ─────────────────────────────────────────
@@ -902,14 +994,19 @@ async function seedQuizzes() {
     const levelSentences = await prisma.sentence.findMany({
       where: { levelId },
       orderBy: { orderIndex: 'asc' },
-      take: 5
-    });
+      take: 12,
+    })
+
+    if (levelSentences.length === 0) {
+      continue
+    }
 
     // Add mixed questions for each quiz
     const questions = [];
 
-    for (let i = 0; i < 5; i++) {
-      const sentence = levelSentences[i % levelSentences.length];
+    const questionCount = 8
+    for (let i = 0; i < questionCount; i++) {
+      const sentence = levelSentences[i % levelSentences.length]
 
       if (i % 2 === 0) {
         // Standard Multiple Choice
@@ -921,9 +1018,9 @@ async function seedQuizzes() {
             options: [sentence.textAr, 'خيار خاطئ 1', 'خيار خاطئ 2', 'خيار خاطئ 3'].sort(() => Math.random() - 0.5),
           },
           correctAnswer: sentence.textAr,
-          points: 20,
+          points: 15,
           orderIndex: i + 1,
-        });
+        })
       } else {
         // Audio Match (Listen and choose correct text)
         questions.push({
@@ -936,21 +1033,194 @@ async function seedQuizzes() {
             audioUrl: sentence.audioUrlNormal,
           },
           correctAnswer: sentence.textEn,
-          points: 20,
+          points: 15,
           orderIndex: i + 1,
-        });
+        })
       }
     }
 
     await prisma.quizQuestion.createMany({ data: questions })
   }
 
-  console.log(`  ✓ Quizzes seeded for 10 levels`)
+  console.log(`  ✓ Quizzes seeded for levels 1–10 (8 أسئلة لكل اختبار)`)
 }
 
 // ─────────────────────────────────────────
 // GAMES
 // ─────────────────────────────────────────
+
+/** Heuristic Arabic tips for sentences not covered by curated Part 5 markdown lists. */
+function inferGrammarTipsForSentence(textEn: string): {
+  grammarTipAr: string
+  grammarCategory: string
+  pronounTipAr?: string | null
+} {
+  const t = textEn.trim()
+  const low = t.toLowerCase()
+
+  const pick = (
+    grammarTipAr: string,
+    grammarCategory: string,
+    pronounTipAr?: string | null
+  ) => ({ grammarTipAr, grammarCategory, pronounTipAr: pronounTipAr ?? undefined })
+
+  if (/\bdon'?t\b|\bdoesn'?t\b|\bdidn'?t\b|\bisn'?t\b|\baren't\b|\bnot\b|^no,\s/i.test(low)) {
+    return pick(
+      '📌 هذه الجملة تحتوي نفيًا أو ردَّ نفي: لا تنسَ أن النفي الصحيح يعتمد على زمن الفعل ونوعه.',
+      'negation'
+    )
+  }
+
+  if (/^(what|which|whose)\b/i.test(low)) {
+    return pick(
+      '📌 سؤال بـ What/Which عن شيء أو خيار. ترتيب السؤال: كلمة السؤال + مساعد + فاعل + فعل.',
+      'question'
+    )
+  }
+
+  if (/^(where|when|why|who|how)\b/i.test(low)) {
+    const w = (/^(how)\b/i.exec(t)?.[1] ?? 'Wh-').toLowerCase()
+    return pick(
+      `📌 سؤال بـ "${w.charAt(0).toUpperCase() + w.slice(1)}". كلمات Wh- للتفاصيل، غالبًا تُليها فعل مساعد ثم الفاعل.`,
+      'question'
+    )
+  }
+
+  if (/^(is|are|was|were|do|does|did|have|has|had|can|could|would|will|may|might|should)\b/i.test(low) && /\?/.test(t)) {
+    return pick(
+      '📌 سؤال تركيب Yes/No: نبدأ بفعل مساعد (Do/Is/Can…) ثم الفاعل ثم المعنى.',
+      'question'
+    )
+  }
+
+  if (/\?$/.test(t) && /\b(can|could|would|may)\s+i\b/i.test(low)) {
+    return pick(
+      '📌 "Can/Could/May + I …?" للطلب الإذن أو المساعدة بأسلوب مهذّب.',
+      'question'
+    )
+  }
+
+  if (/\?$/.test(t) && /^can\s+you\b/i.test(low)) {
+    return pick(
+      '📌 "Can you …?" للطلب المباشر بأسلوب مهذّب قبل المفعول أو الفعل.',
+      'verb',
+      '👤 You = مخاطَب'
+    )
+  }
+
+  if (/\bwould\s+you\s+like\b|\bi'?d\s+like\b|\bi\s+would\s+like\b/i.test(low)) {
+    return pick(
+      '📌 التعبير بأسلوب مهذّب عن الرغبة: would like أكثر تأدبًا من want في الطلبات.',
+      'verb'
+    )
+  }
+
+  if (/\bi'?ll\b|\bi\s+will\b|\bwill\s+you\b/i.test(low)) {
+    return pick(
+      '📌 "will" للمستقبل القريب وللقرارات في اللحظة.',
+      'tense'
+    )
+  }
+
+  if (/\bye(s|ted|ing)\b|^see you\b|^goodbye|^good morning|^good evening/i.test(low)) {
+    return pick(
+      '📌 جمل تعارف وأحوال ثابتة — احفظ الصيغة كما هي؛ بعضها مخفّض في المحادثة.',
+      'structure'
+    )
+  }
+
+  if (/\blet'?s\b|\blet\s+us\b/i.test(low)) {
+    return pick(
+      '📌 "Let\'s" = دعنا + فعل؛ اقتراح مشترك مهذّب.',
+      'structure'
+    )
+  }
+
+  if (/\bknow\b.*\bhim\b|\bhim\b.*\bknow\b/i.test(low)) {
+    return pick(
+      '📌 بعد بعض الأفعال الكشف عن الشّخص يأتي ضمير مفعول به: him/her/them وليس he/she.',
+      'pronoun',
+      '👤 him = ضمير مفعول به'
+    )
+  }
+
+  if (/\bi\s+(am|'m)\b|^i'm\b/i.test(low)) {
+    return pick(
+      '📌 "I am / I\'m" مع صفات أو مهنة للتعبير عن الحالة أو الهوية.',
+      'pronoun',
+      '👤 I — مع am فقط في المضارع'
+    )
+  }
+
+  if (/\bi\s+(have|had|got)\b|^i'?ve\b/i.test(low)) {
+    return pick(
+      '📌 "I have" للوجود وللحالة الجسدية كثيرًا — مع I لا تُضاف s للـ have.',
+      'verb',
+      '👤 I'
+    )
+  }
+
+  if (/\b(your|his|her|their|our|my)\s+\w+/i.test(low)) {
+    return pick(
+      '📌 ضمائر الملكية (my/your…) تسبق الاسم مباشرة دون اسم إضافة منفصل.',
+      'pronoun'
+    )
+  }
+
+  if (/\b(he|she|they|we|it)\s+(is|are|was|were|has|have|needs?|works?)\b/i.test(low)) {
+    return pick(
+      '📌 مع الجموع/third person انتبه لاتفاق الفعل: has مع he/she/it و have مع they/we/I.',
+      'tense'
+    )
+  }
+
+  if (/^(this|that|these|those)\s/i.test(low)) {
+    return pick(
+      '📌 this/these للقُرب، that/those للبُعد؛ تتّفق مع الجمع في these/those.',
+      'structure'
+    )
+  }
+
+  if (/\?$/.test(t) && /\bhow\s+many\b|\bhow\s+much\b/i.test(low)) {
+    return pick(
+      '📌 How much للكم غير المعدودة / السعر، How many بعدد الأشياء المعدودة.',
+      'question'
+    )
+  }
+
+  if (/\bneed\s+to\s+\w+/i.test(low)) {
+    return pick(
+      '📌 "need to + مصدر" تعبير عن ضرورة أو يجب أن؛ الفعل يبقى بصيغة المصدر بعد to.',
+      'verb'
+    )
+  }
+
+  if (/\bwant\s+to\s+/i.test(low)) {
+    return pick(
+      '📌 "want to + مصدر" للرغبة في فعل؛ لا تصرف الفعل الثاني.',
+      'verb'
+    )
+  }
+
+  if (/\b(go|went|going|come|came)\b/i.test(low)) {
+    return pick(
+      '📌 أفعال الحركة تُستخدم كثيرًا في السفر؛ لاحظ go/went وفروق الزمن بين المضارع والماضي.',
+      'verb'
+    )
+  }
+
+  if (/\?\s*$/.test(t)) {
+    return pick(
+      '📌 جملة استفهام — راقب ترتيب الأدوات المساعدة والفاعل مقارنةً بالإخبارية.',
+      'question'
+    )
+  }
+
+  return pick(
+    '📌 جملة تعبير عن موقف واقعي؛ راقب ترتيب فاعل + فعل ومطابقة الفعل مع الفاعل في المضارع البسيط.',
+    'structure'
+  )
+}
 
 async function seedGames() {
   console.log('🎮 Seeding games...')
@@ -959,44 +1229,47 @@ async function seedGames() {
   await prisma.gameQuestion.deleteMany({})
   await prisma.game.deleteMany({})
 
+  const QUESTIONS_PER_GAME = 32
+
+  const gameConfigsSentence = [
+    { type: Difficulty.EASY, titleAr: 'سهل ١', index: 1 },
+    { type: Difficulty.MEDIUM, titleAr: 'متوسط ١', index: 2 },
+    { type: Difficulty.HARD, titleAr: 'صعب ١', index: 3 },
+    { type: Difficulty.EASY, titleAr: 'سهل ٢', index: 4 },
+    { type: Difficulty.MEDIUM, titleAr: 'متوسط ٢', index: 5 },
+    { type: Difficulty.HARD, titleAr: 'صعب ٢', index: 6 },
+    { type: Difficulty.MEDIUM, titleAr: 'مراجعة ١', index: 7 },
+    { type: Difficulty.HARD, titleAr: 'تحدي المراجعة', index: 8 },
+  ]
+
   for (let levelId = 1; levelId <= 10; levelId++) {
     const sentences = await prisma.sentence.findMany({
       where: { levelId },
-      orderBy: { orderIndex: 'asc' }
+      orderBy: { orderIndex: 'asc' },
     })
 
     if (sentences.length === 0) continue
 
-    const gameConfigs = [
-      { type: Difficulty.EASY, titleAr: 'سهل 1', index: 1 },
-      { type: Difficulty.MEDIUM, titleAr: 'متوسط 1', index: 2 },
-      { type: Difficulty.HARD, titleAr: 'صعب 1', index: 3 },
-      { type: Difficulty.EASY, titleAr: 'سهل 2', index: 4 },
-      { type: Difficulty.MEDIUM, titleAr: 'متوسط 2', index: 5 },
-    ]
-
-    for (const diff of gameConfigs) {
+    for (const diff of gameConfigsSentence) {
       const game = await prisma.game.create({
         data: {
           levelId,
           type: GameType.MIXED,
-          titleAr: `${diff.titleAr} - المستوى ${levelId}`,
+          titleAr: `${diff.titleAr} — المستوى ${levelId}`,
           difficulty: diff.type,
           orderIndex: diff.index,
-        }
+        },
       })
 
-      // Generate 20+ mixed questions
-      // We Cycle through sentences to reach at least 20
-      for (let i = 0; i < 20; i++) {
+      for (let i = 0; i < QUESTIONS_PER_GAME; i++) {
         const sentence = sentences[i % sentences.length]
         const questionType = [GameType.DRAG_DROP, GameType.MULTIPLE_CHOICE, GameType.FILL_BLANK][i % 3]
 
-        let questionData: any = {}
+        let questionData: Record<string, unknown> = {}
         let correctAnswer = ''
 
         if (questionType === GameType.DRAG_DROP) {
-          const words = sentence.textEn.split(' ')
+          const words = sentence.textEn.split(/\s+/)
           questionData = {
             sentenceEn: sentence.textEn,
             words: [...words].sort(() => Math.random() - 0.5),
@@ -1004,12 +1277,11 @@ async function seedGames() {
           }
           correctAnswer = JSON.stringify(words)
         } else if (questionType === GameType.MULTIPLE_CHOICE) {
-          // Find distractor sentences from the same level
           const distractors = sentences
-            .filter(s => s.id !== sentence.id)
+            .filter((s) => s.id !== sentence.id)
             .sort(() => Math.random() - 0.5)
             .slice(0, 3)
-            .map(s => s.textAr)
+            .map((s) => s.textAr)
 
           const options = [sentence.textAr, ...distractors].sort(() => Math.random() - 0.5)
 
@@ -1018,8 +1290,8 @@ async function seedGames() {
             options,
           }
           correctAnswer = sentence.textAr
-        } else if (questionType === GameType.FILL_BLANK) {
-          const words = sentence.textEn.split(' ')
+        } else {
+          const words = sentence.textEn.split(/\s+/)
           const blankIndex = Math.floor(Math.random() * words.length)
           const blankWord = words[blankIndex]
           words[blankIndex] = '___'
@@ -1036,16 +1308,165 @@ async function seedGames() {
             gameId: game.id,
             sentenceId: sentence.id,
             type: questionType,
-            questionData,
+            questionData: questionData as Prisma.InputJsonValue,
             correctAnswer,
             orderIndex: i + 1,
-          }
+          },
         })
       }
     }
   }
 
-  console.log('  ✓ Games seeded with 20 mixed questions per difficulty for all levels')
+  // Grammar practice levels (examples from GrammarRule JSON; sentenceId omitted)
+  const grammarLevelIds = [11, 12, 13]
+  const gameConfigsGrammar = [
+    { type: Difficulty.EASY, titleAr: '📘 قواعد — سهل ١', index: 1 },
+    { type: Difficulty.MEDIUM, titleAr: '📘 قواعد — متوسط ١', index: 2 },
+    { type: Difficulty.HARD, titleAr: '📘 قواعد — صعب ١', index: 3 },
+    { type: Difficulty.EASY, titleAr: '📘 قواعد — سهل ٢', index: 4 },
+    { type: Difficulty.MEDIUM, titleAr: '📘 قواعد — متوسط ٢', index: 5 },
+    { type: Difficulty.HARD, titleAr: '📘 قواعد — صعب ٢', index: 6 },
+    { type: Difficulty.MEDIUM, titleAr: '📘 قواعد — مراجعة', index: 7 },
+    { type: Difficulty.HARD, titleAr: '📘 قواعد — تحدي', index: 8 },
+  ]
+
+  const genericWrongAr = [
+    'تعبير مختلف عن المعنى المطلوب',
+    'صياغة عامة وليست الترجمة الدقيقة',
+    'اختصار خطأ في المعنى',
+  ]
+
+  for (const levelId of grammarLevelIds) {
+    const rules = await prisma.grammarRule.findMany({
+      where: { levelId, isActive: true },
+      orderBy: { orderIndex: 'asc' },
+    })
+
+    const pool: { en: string; ar: string }[] = []
+    for (const rule of rules) {
+      const ex = rule.examples
+      if (Array.isArray(ex)) {
+        for (const item of ex) {
+          if (
+            item &&
+            typeof item === 'object' &&
+            'en' in item &&
+            'ar' in item
+          ) {
+            const enStr = String((item as { en: unknown }).en).trim()
+            const arStr = String((item as { ar: unknown }).ar).trim()
+            if (enStr.length > 2 && arStr.length > 1) {
+              pool.push({ en: enStr, ar: arStr })
+            }
+          }
+        }
+      }
+    }
+
+    if (pool.length === 0) continue
+
+    const allArabic = [...new Set(pool.map((p) => p.ar))]
+
+    const pickDistractors = (correctAr: string) => {
+      const picks = allArabic.filter((x) => x !== correctAr).sort(() => Math.random() - 0.5)
+      const chosen = picks.slice(0, 3)
+      while (chosen.length < 3) {
+        const g = genericWrongAr[chosen.length % genericWrongAr.length]
+        if (!chosen.includes(g)) chosen.push(g)
+      }
+      return chosen
+    }
+
+    for (const diff of gameConfigsGrammar) {
+      const game = await prisma.game.create({
+        data: {
+          levelId,
+          type: GameType.MIXED,
+          titleAr: `${diff.titleAr}`,
+          difficulty: diff.type,
+          orderIndex: diff.index,
+        },
+      })
+
+      for (let i = 0; i < QUESTIONS_PER_GAME; i++) {
+        const pair = pool[i % pool.length]
+        const questionType = [GameType.MULTIPLE_CHOICE, GameType.FILL_BLANK, GameType.DRAG_DROP][i % 3]
+
+        let questionData: Record<string, unknown> = {}
+        let correctAnswer = ''
+        let resolvedType: GameType = questionType
+
+        if (questionType === GameType.MULTIPLE_CHOICE) {
+          const distractors = pickDistractors(pair.ar)
+          const options = [pair.ar, ...distractors].sort(() => Math.random() - 0.5)
+
+          questionData = {
+            question: `اختر العربية المناسبة لـ: "${pair.en}"`,
+            options,
+          }
+          correctAnswer = pair.ar
+        } else if (questionType === GameType.FILL_BLANK) {
+          const words = pair.en.split(/\s+/)
+          if (words.length < 2) {
+            resolvedType = GameType.MULTIPLE_CHOICE
+            const distractors = pickDistractors(pair.ar)
+            const options = [pair.ar, ...distractors].sort(() => Math.random() - 0.5)
+            questionData = {
+              question: `اختر الترجمة: "${pair.en}"`,
+              options,
+            }
+            correctAnswer = pair.ar
+          } else {
+            const blankIndex = Math.floor(Math.random() * words.length)
+            const blankWord = words[blankIndex]
+            words[blankIndex] = '___'
+
+            questionData = {
+              question: words.join(' '),
+              hint: pair.ar,
+            }
+            correctAnswer = blankWord
+          }
+        } else {
+          const words = pair.en.split(/\s+/)
+          if (words.length < 3) {
+            resolvedType = GameType.MULTIPLE_CHOICE
+            const distractors = pickDistractors(pair.ar)
+            const options = [pair.ar, ...distractors].sort(() => Math.random() - 0.5)
+            questionData = {
+              question: `اختر الترجمة: "${pair.en}"`,
+              options,
+            }
+            correctAnswer = pair.ar
+          } else {
+            questionData = {
+              sentenceEn: pair.en,
+              words: [...words].sort(() => Math.random() - 0.5),
+              correctOrder: words,
+            }
+            correctAnswer = JSON.stringify(words)
+          }
+        }
+
+        await prisma.gameQuestion.create({
+          data: {
+            gameId: game.id,
+            sentenceId: null,
+            type: resolvedType,
+            questionData: questionData as Prisma.InputJsonValue,
+            correctAnswer,
+            orderIndex: i + 1,
+          },
+        })
+      }
+    }
+  }
+
+  console.log(
+    '  ✓ Games: thematic levels → 8 games × '
+      + QUESTIONS_PER_GAME
+      + ' أسئلة؛ مستويات القواعد 11–13 → ألعاب من أمثلة القواعد'
+  )
 }
 
 // ─────────────────────────────────────────
@@ -1080,6 +1501,414 @@ async function seedSuperAdmin() {
 
   console.log(`  ✓ Super admin created: ${adminEmail}`)
   console.log(`  ⚠️  Change the password immediately after first login!`)
+}
+
+// ─────────────────────────────────────────
+// GRAMMAR TIPS (match sentences by textEn)
+// ─────────────────────────────────────────
+
+async function seedGrammarTips() {
+  console.log('📖 Seeding grammar tips on sentences...')
+
+  const grammarUpdates: {
+    textEn: string
+    grammarTipAr?: string
+    grammarTipEn?: string
+    pronounTipAr?: string
+    grammarCategory?: string
+    difficultyNote?: string
+  }[] = [
+    { textEn: 'Where is the nearest bus station?', grammarTipAr: '📌 "Where is" تُستخدم للسؤال عن مكان شيء واحد. المفرد دائمًا "is" وليس "are".', grammarCategory: 'question' },
+    { textEn: 'I need a taxi, please.', grammarTipAr: '📌 الضمير "I" = أنا. الفعل "need" لا يأخذ "s" مع I — نقول "I need" وليس "I needs".', pronounTipAr: '👤 I = أنا (ضمير المتكلم)', grammarCategory: 'pronoun' },
+    { textEn: 'How much is the fare to the airport?', grammarTipAr: '📌 "How much" للسؤال عن السعر أو الكمية غير المعدودة. "How many" للأشياء المعدودة.', grammarCategory: 'question' },
+    { textEn: 'Can you take me to this address?', grammarTipAr: '📌 "Can you...?" طريقة مؤدبة لطلب شيء. أقوى من "Please" وأكثر استخدامًا يوميًا.', pronounTipAr: '👤 You = أنت / أنتم (ضمير المخاطب)', grammarCategory: 'verb' },
+    { textEn: 'How far is this place from here?', grammarTipAr: '📌 "How far" للسؤال عن المسافة. "How long" للسؤال عن الوقت.', grammarCategory: 'question' },
+    { textEn: 'How long does it take to get there?', grammarTipAr: '📌 "does it take" — نستخدم "does" مع he/she/it في المضارع البسيط.', pronounTipAr: '👤 It = هو/هي للأشياء وليس للأشخاص', grammarCategory: 'tense' },
+    { textEn: 'Stop here, please.', grammarTipAr: '📌 الأمر المباشر: نبدأ بالفعل مباشرة بدون ضمير. "Stop" وليس "You stop".', grammarCategory: 'structure' },
+    { textEn: 'When does the next train leave?', grammarTipAr: '📌 "does" في السؤال مع المضارع البسيط. الترتيب: When + does + الفاعل + الفعل الأصلي.', grammarCategory: 'question' },
+    { textEn: 'I need a one-way ticket.', grammarTipAr: '📌 "a" قبل الاسم المفرد الذي يبدأ بحرف ساكن. "an" قبل الاسم الذي يبدأ بحرف متحرك.', grammarCategory: 'structure' },
+    { textEn: 'I am lost, can you help me?', grammarTipAr: '📌 "I am" = أنا + فعل الكون. اختصاره "I\'m". استخدمه للتعبير عن الحالة.', pronounTipAr: '👤 Me = إياي (ضمير المفعول به للمتكلم)', grammarCategory: 'pronoun' },
+    { textEn: 'I need a doctor quickly.', grammarTipAr: '📌 "quickly" ظرف حال — يصف كيف تحتاج الطبيب. الظروف عادةً تنتهي بـ "ly".', grammarCategory: 'structure' },
+    { textEn: 'I have severe pain in my stomach.', grammarTipAr: '📌 "I have" للتعبير عن الملكية أو الحالة الجسدية. "have" لا تأخذ "s" مع I.', pronounTipAr: '👤 My = ضمير الملكية للمتكلم (مثل: my bag, my name)', grammarCategory: 'pronoun' },
+    { textEn: 'I feel dizzy.', grammarTipAr: '📌 "feel" فعل للتعبير عن المشاعر والإحساس الجسدي. يأتي بعده صفة مباشرة.', grammarCategory: 'verb' },
+    { textEn: 'I cannot breathe well.', grammarTipAr: '📌 "cannot" = can + not. اختصاره "can\'t". يعبر عن عدم القدرة.', grammarCategory: 'negation' },
+    { textEn: 'I am allergic to peanuts.', grammarTipAr: '📌 "allergic to" — حساسية من. لاحظ أن "to" دائمًا تأتي بعد allergic.', grammarCategory: 'structure' },
+    { textEn: 'Can I get a prescription?', grammarTipAr: '📌 "Can I...?" للطلب المؤدب. أكثر استخدامًا من "May I" في المحادثة اليومية.', grammarCategory: 'question' },
+    { textEn: 'Do I need to stay in the hospital?', grammarTipAr: '📌 "Do I need to...?" السؤال عن الضرورة. "need to" + فعل الأصل.', grammarCategory: 'question' },
+    { textEn: 'I am not feeling better.', grammarTipAr: '📌 النفي مع فعل الكون: am + not. "I am not" = I\'m not.', grammarCategory: 'negation' },
+    { textEn: 'I feel better now.', grammarTipAr: '📌 "now" ظرف زمان يدل على الحاضر. يأتي في نهاية الجملة أو بدايتها.', grammarCategory: 'tense' },
+    { textEn: 'I am a university student.', grammarTipAr: '📌 "I am a/an + وظيفة أو صفة" — الصيغة الأساسية للتعريف بنفسك.', pronounTipAr: '👤 I am = أنا (المضارع مع فعل الكون)', grammarCategory: 'pronoun' },
+    { textEn: 'What major are you studying?', grammarTipAr: '📌 "are you studying" — المضارع المستمر (present continuous). الصيغة: am/is/are + فعل + ing.', pronounTipAr: '👤 You = أنت. "are" مع you دائمًا.', grammarCategory: 'tense' },
+    { textEn: 'I need help with this homework.', grammarTipAr: '📌 "help with" — تحتاج مساعدة في شيء. دائمًا "with" وليس "in" مع help.', grammarCategory: 'structure' },
+    { textEn: 'I have an important meeting tomorrow.', grammarTipAr: '📌 "tomorrow" مع المضارع البسيط يعني المستقبل القريب. لا نحتاج "will" دائمًا.', grammarCategory: 'tense' },
+    { textEn: 'I need to send an email.', grammarTipAr: '📌 "need to + فعل" = يجب أن. الفعل بعد "to" يبقى في صيغته الأصلية.', grammarCategory: 'verb' },
+    { textEn: 'I am very busy right now.', grammarTipAr: '📌 "right now" = الآن تمامًا. أقوى من "now" وتؤكد اللحظة الحالية.', grammarCategory: 'tense' },
+    { textEn: 'I agree with your opinion.', grammarTipAr: '📌 "agree with" — أوافق على. دائمًا "with" وليس "to" مع agree.', pronounTipAr: '👤 Your = ضمير ملكية للمخاطب (مثل: your name, your bag)', grammarCategory: 'pronoun' },
+    { textEn: 'Hello, table for two, please.', grammarTipAr: '📌 جملة مختصرة بدون فعل — شائعة في المحادثة اليومية للطلب السريع.', grammarCategory: 'structure' },
+    { textEn: 'May I see the menu, please?', grammarTipAr: '📌 "May I" = هل يمكنني. أكثر رسمية من "Can I" — تُستخدم في المطاعم الراقية.', grammarCategory: 'question' },
+    { textEn: 'I will have the chicken with rice.', grammarTipAr: '📌 "I will have" في المطعم = سأطلب. "will" للمستقبل القريب والقرارات اللحظية.', grammarCategory: 'tense' },
+    { textEn: 'I would like the salad without onions, please.', grammarTipAr: '📌 "I would like" = أود. أكثر أدبًا من "I want". استخدمها دائمًا في الطلب.', grammarCategory: 'verb' },
+    { textEn: 'Could you make the food not spicy, please?', grammarTipAr: '📌 "Could you...?" أكثر أدبًا من "Can you". تستخدم للطلبات الخاصة.', grammarCategory: 'verb' },
+    { textEn: 'Excuse me, this is not what I ordered.', grammarTipAr: '📌 "what I ordered" — جملة موصولة. "what" هنا تعني "الشيء الذي".', grammarCategory: 'structure' },
+    { textEn: 'How much does this product cost, please?', grammarTipAr: '📌 "does this...cost?" — السؤال مع المضارع البسيط. "does" للمفرد (he/she/it).', grammarCategory: 'question' },
+    { textEn: 'Do you have other sizes for this shirt?', grammarTipAr: '📌 "Do you have...?" السؤال عن الوجود/الامتلاك. "Do" للمضارع البسيط مع I/You/We/They.', pronounTipAr: '👤 You = أنت/أنتم. "Do you" للسؤال المباشر.', grammarCategory: 'question' },
+    { textEn: 'I am looking for a black leather bag.', grammarTipAr: '📌 "looking for" = يبحث عن. المضارع المستمر يعبر عن فعل يحدث الآن.', grammarCategory: 'tense' },
+    { textEn: 'This shirt is too small for me.', grammarTipAr: '📌 "too + صفة" = أكثر من اللازم بطريقة سلبية. "very small" ≠ "too small".', pronounTipAr: '👤 Me = إياي (ضمير المفعول به)', grammarCategory: 'pronoun' },
+    { textEn: 'I want to return this product.', grammarTipAr: '📌 "want to + فعل" = أريد أن. الفعل بعد "to" دائمًا في صيغته الأصلية.', grammarCategory: 'verb' },
+    { textEn: 'This is exactly what I am looking for.', grammarTipAr: '📌 "what I am looking for" جملة موصولة معقدة. "what" هنا = الشيء الذي.', grammarCategory: 'structure' },
+    { textEn: 'Hello, how are you today?', grammarTipAr: '📌 "How are you?" السؤال عن الحال. الإجابة: "I am fine / good / great".', pronounTipAr: '👤 You = أنت. "are" دائمًا مع you.', grammarCategory: 'question' },
+    { textEn: "It's a pleasure to meet you.", grammarTipAr: '📌 "It\'s" = It is. نستخدم "it" للتعبير عن مشاعر أو مواقف بشكل عام.', pronounTipAr: '👤 It = ضمير للأشياء والمواقف المجردة', grammarCategory: 'pronoun' },
+    { textEn: 'Where are you from?', grammarTipAr: '📌 "Where are you from?" — "from" في نهاية الجملة طبيعي في الإنجليزية المحكية.', grammarCategory: 'question' },
+    { textEn: 'I am from Saudi Arabia.', grammarTipAr: '📌 "I am from + بلد" — الصيغة الأساسية لذكر الجنسية أو المكان الأصلي.', grammarCategory: 'structure' },
+    { textEn: 'Do you speak English?', grammarTipAr: '📌 "Do you speak...?" سؤال عن عادة أو قدرة. "Do" في المضارع البسيط مع you.', grammarCategory: 'question' },
+    { textEn: "No, I don't speak English.", grammarTipAr: '📌 النفي في المضارع البسيط: don\'t = do + not. مع I/You/We/They.', grammarCategory: 'negation' },
+    { textEn: 'How long have you been living here?', grammarTipAr: '📌 "How long have you been...?" — المضارع التام المستمر. للسؤال عن شيء بدأ في الماضي ومستمر.', grammarCategory: 'tense' },
+  ]
+
+  for (const update of grammarUpdates) {
+    await prisma.sentence.updateMany({
+      where: { textEn: update.textEn },
+      data: {
+        grammarTipAr: update.grammarTipAr ?? null,
+        grammarTipEn: update.grammarTipEn ?? null,
+        pronounTipAr: update.pronounTipAr ?? null,
+        grammarCategory: update.grammarCategory ?? null,
+        difficultyNote: update.difficultyNote ?? null,
+      },
+    })
+  }
+
+  const needHeuristic = await prisma.sentence.findMany({
+    where: {
+      isActive: true,
+      OR: [{ grammarTipAr: null }, { grammarTipAr: '' }],
+    },
+    select: { id: true, textEn: true },
+  })
+
+  let heuristicCount = 0
+  for (const row of needHeuristic) {
+    const inferred = inferGrammarTipsForSentence(row.textEn)
+    await prisma.sentence.update({
+      where: { id: row.id },
+      data: {
+        grammarTipAr: inferred.grammarTipAr,
+        grammarCategory: inferred.grammarCategory,
+        pronounTipAr: inferred.pronounTipAr ?? null,
+      },
+    })
+    heuristicCount++
+  }
+
+  console.log(
+    `  ✓ ${grammarUpdates.length} curated (markdown) + ${heuristicCount} heuristic grammar tips on sentences`
+  )
+}
+
+async function seedGrammarRules() {
+  console.log('📐 Seeding grammar rules (levels 11–13)...')
+
+  await prisma.grammarRule.deleteMany({})
+
+  const L_PRONOUNS = 11
+  const L_VERBS = 12
+  const L_STRUCTURE = 13
+
+  const rules: {
+    levelId: number
+    orderIndex: number
+    titleAr: string
+    titleEn: string
+    explanation: string
+    examples: { en: string; ar: string; note: string }[]
+  }[] = [
+    {
+      levelId: L_PRONOUNS,
+      orderIndex: 1,
+      titleAr: 'ضمائر الفاعل',
+      titleEn: 'Subject Pronouns',
+      explanation: `ضمائر الفاعل تُستخدم عندما يكون الضمير هو فاعل الجملة (الشخص الذي يقوم بالفعل).
+
+الضمائر السبعة:
+• I = أنا
+• You = أنت / أنتم
+• He = هو (للمذكر)
+• She = هي (للمؤنث)
+• It = هو/هي (للأشياء والحيوانات)
+• We = نحن
+• They = هم / هن
+
+قاعدة مهمة: الفعل يتغير مع He/She/It فقط في المضارع البسيط — يضاف "s" أو "es".`,
+      examples: [
+        { en: 'I work in a company.', ar: 'أنا أعمل في شركة.', note: 'I + فعل بدون تغيير' },
+        { en: 'She works in a hospital.', ar: 'هي تعمل في مستشفى.', note: 'She + فعل + s' },
+        { en: 'They study English.', ar: 'هم يدرسون الإنجليزية.', note: 'They + فعل بدون تغيير' },
+        { en: 'He needs a doctor.', ar: 'هو يحتاج إلى طبيب.', note: 'He + فعل + s' },
+        { en: 'We live in Saudi Arabia.', ar: 'نحن نعيش في السعودية.', note: 'We + فعل بدون تغيير' },
+        { en: 'It is very cold today.', ar: 'الجو بارد جدًا اليوم.', note: 'It للطقس والأشياء' },
+      ],
+    },
+    {
+      levelId: L_PRONOUNS,
+      orderIndex: 2,
+      titleAr: 'ضمائر المفعول به',
+      titleEn: 'Object Pronouns',
+      explanation: `ضمائر المفعول به تُستخدم عندما يكون الضمير مفعولًا به في الجملة.
+
+التحويل من الفاعل إلى المفعول:
+• I → Me (أنا → إياي)
+• You → You (أنت → إياك) — لا يتغير
+• He → Him (هو → إياه)
+• She → Her (هي → إياها)
+• It → It (هو/هي → إياه) — لا يتغير
+• We → Us (نحن → إيانا)
+• They → Them (هم → إياهم)`,
+      examples: [
+        { en: 'Can you help me?', ar: 'هل يمكنك مساعدتي؟', note: 'me = مفعول به' },
+        { en: 'I can see him.', ar: 'أنا أستطيع رؤيته.', note: 'him = مفعول به' },
+        { en: 'She called us.', ar: 'هي اتصلت بنا.', note: 'us = مفعول به' },
+        { en: 'I need to tell them.', ar: 'أحتاج أن أخبرهم.', note: 'them = مفعول به' },
+        { en: 'Can I ask her?', ar: 'هل يمكنني أن أسألها؟', note: 'her = مفعول به' },
+      ],
+    },
+    {
+      levelId: L_PRONOUNS,
+      orderIndex: 3,
+      titleAr: 'ضمائر الملكية',
+      titleEn: 'Possessive Pronouns',
+      explanation: `ضمائر الملكية تُستخدم للتعبير عن الملكية — "ملكي، ملكك، ملكه..."
+
+نوعان:
+١. الملكية قبل الاسم (Possessive Adjectives):
+My / Your / His / Her / Its / Our / Their
+
+٢. الملكية المستقلة (Possessive Pronouns):
+Mine / Yours / His / Hers / Its / Ours / Theirs`,
+      examples: [
+        { en: 'My name is Ahmed.', ar: 'اسمي أحمد.', note: 'my قبل الاسم' },
+        { en: 'What is your job?', ar: 'ما هو عملك؟', note: 'your قبل الاسم' },
+        { en: 'His bag is heavy.', ar: 'حقيبته ثقيلة.', note: 'his قبل الاسم' },
+        { en: 'This bag is mine.', ar: 'هذه الحقيبة ملكي.', note: 'mine مستقل' },
+        { en: 'Our team is great.', ar: 'فريقنا رائع.', note: 'our قبل الاسم' },
+      ],
+    },
+    {
+      levelId: L_PRONOUNS,
+      orderIndex: 4,
+      titleAr: 'ضمائر الإشارة',
+      titleEn: 'Demonstrative Pronouns',
+      explanation: `ضمائر الإشارة تُستخدم للإشارة إلى أشياء قريبة أو بعيدة.
+
+• This = هذا/هذه (مفرد قريب)
+• These = هؤلاء/هذه (جمع قريب)
+• That = ذلك/تلك (مفرد بعيد)
+• Those = أولئك/تلك (جمع بعيد)`,
+      examples: [
+        { en: 'This is not what I ordered.', ar: 'هذا ليس ما طلبته.', note: 'this للقريب المفرد' },
+        { en: 'That hotel is expensive.', ar: 'ذلك الفندق غالٍ.', note: 'that للبعيد المفرد' },
+        { en: 'These shoes are too big.', ar: 'هذه الأحذية كبيرة جدًا.', note: 'these للقريب الجمع' },
+        { en: 'Those are my bags.', ar: 'تلك حقائبي.', note: 'those للبعيد الجمع' },
+      ],
+    },
+    {
+      levelId: L_VERBS,
+      orderIndex: 1,
+      titleAr: 'فعل الكون — To Be',
+      titleEn: 'The Verb To Be',
+      explanation: `"To Be" أهم فعل في الإنجليزية. له ثلاثة أشكال في المضارع:
+
+• I → am
+• You / We / They → are
+• He / She / It → is
+
+الاختصارات:
+I am = I'm | You are = You're | He is = He's
+She is = She's | We are = We're | They are = They're
+
+النفي: am not / are not (aren't) / is not (isn't)`,
+      examples: [
+        { en: 'I am a university student.', ar: 'أنا طالب جامعي.', note: 'I + am' },
+        { en: 'You are from Saudi Arabia.', ar: 'أنت من السعودية.', note: 'You + are' },
+        { en: 'He is a doctor.', ar: 'هو طبيب.', note: 'He + is' },
+        { en: 'We are not feeling well.', ar: 'نحن لا نشعر بتحسن.', note: 'We + are + not' },
+        { en: "It isn't spicy.", ar: 'إنه غير حار.', note: 'It + is + not' },
+      ],
+    },
+    {
+      levelId: L_VERBS,
+      orderIndex: 2,
+      titleAr: 'فعل الامتلاك — To Have',
+      titleEn: 'The Verb To Have',
+      explanation: `"To Have" يُستخدم للتعبير عن الملكية أو الحالة.
+
+المضارع البسيط:
+• I / You / We / They → have
+• He / She / It → has
+
+استخدامات "have":
+١. الملكية: I have a car.
+٢. الحالة الجسدية: I have a headache.
+٣. المضارع التام: I have been here.`,
+      examples: [
+        { en: 'I have severe pain.', ar: 'لدي ألم شديد.', note: 'have للحالة الجسدية' },
+        { en: 'She has a meeting.', ar: 'لديها اجتماع.', note: 'has مع she' },
+        { en: 'Do you have a receipt?', ar: 'هل لديك إيصال؟', note: 'have في السؤال' },
+        { en: 'I have a high fever.', ar: 'لدي حرارة مرتفعة.', note: 'have للمرض' },
+      ],
+    },
+    {
+      levelId: L_VERBS,
+      orderIndex: 3,
+      titleAr: 'أفعال الحاجة والرغبة',
+      titleEn: 'Need, Want, Would Like',
+      explanation: `ثلاثة أفعال يومية مهمة جدًا:
+
+• Need = يحتاج (ضرورة)
+• Want = يريد (رغبة مباشرة)
+• Would like = يودّ (رغبة مؤدبة)
+
+الترتيب بعدها:
+need/want/would like + to + فعل أصلي
+أو: need/want/would like + اسم`,
+      examples: [
+        { en: 'I need a doctor.', ar: 'أحتاج طبيبًا.', note: 'need + اسم' },
+        { en: 'I need to send an email.', ar: 'أحتاج أن أرسل بريدًا.', note: 'need + to + فعل' },
+        { en: 'I want to return this.', ar: 'أريد إرجاع هذا.', note: 'want + to + فعل' },
+        { en: 'I would like the chicken.', ar: 'أود طبق الدجاج.', note: 'would like + اسم' },
+        { en: 'I would like to sit here.', ar: 'أود الجلوس هنا.', note: 'would like + to + فعل' },
+      ],
+    },
+    {
+      levelId: L_VERBS,
+      orderIndex: 4,
+      titleAr: 'أفعال الاستطاعة والإذن',
+      titleEn: 'Can, Could, May',
+      explanation: `ثلاثة أفعال ناقصة مهمة:
+
+• Can = يستطيع / هل يمكن (عام)
+• Could = هل يمكن (أكثر أدبًا من can)
+• May = هل يمكنني (الأكثر رسمية)
+
+ترتيبها من الأقل للأكثر رسمية:
+Can < Could < May
+
+بعدها مباشرة فعل أصلي بدون "to"`,
+      examples: [
+        { en: 'Can you help me?', ar: 'هل يمكنك مساعدتي؟', note: 'can للطلب اليومي' },
+        { en: 'Can I try this on?', ar: 'هل يمكنني تجربة هذا؟', note: 'can للإذن' },
+        { en: 'Could you repeat that?', ar: 'هل يمكنك التكرار؟', note: 'could أكثر أدبًا' },
+        { en: 'May I see the menu?', ar: 'هل يمكنني رؤية القائمة؟', note: 'may للرسمي' },
+      ],
+    },
+    {
+      levelId: L_STRUCTURE,
+      orderIndex: 1,
+      titleAr: 'الجملة الإخبارية',
+      titleEn: 'Affirmative Sentences',
+      explanation: `الجملة الإخبارية الأساسية تتكون من:
+فاعل + فعل + مفعول به (اختياري)
+
+ترتيب الجملة الإنجليزية ثابت ومختلف عن العربية:
+• الفاعل دائمًا قبل الفعل
+• لا يمكن حذف الفاعل (إلا في الأمر)
+
+المضارع البسيط:
+S + V (+ s/es with he/she/it) + Object`,
+      examples: [
+        { en: 'I work in a company.', ar: 'أعمل في شركة.', note: 'فاعل + فعل + مكان' },
+        { en: 'She studies English.', ar: 'هي تدرس الإنجليزية.', note: 'فاعل + فعل+s + مفعول' },
+        { en: 'We need a taxi.', ar: 'نحن نحتاج تاكسي.', note: 'فاعل + فعل + مفعول' },
+      ],
+    },
+    {
+      levelId: L_STRUCTURE,
+      orderIndex: 2,
+      titleAr: 'الجملة النافية',
+      titleEn: 'Negative Sentences',
+      explanation: `لبناء جملة نافية في المضارع البسيط:
+
+مع I/You/We/They:
+فاعل + do not (don't) + فعل أصلي
+
+مع He/She/It:
+فاعل + does not (doesn't) + فعل أصلي
+
+مع فعل الكون (am/is/are):
+فاعل + am/is/are + not`,
+      examples: [
+        { en: "I don't speak English.", ar: 'لا أتكلم الإنجليزية.', note: "don't مع I" },
+        { en: "She doesn't work here.", ar: 'هي لا تعمل هنا.', note: "doesn't مع she" },
+        { en: 'I am not feeling better.', ar: 'لا أشعر بتحسن.', note: 'am not مع I' },
+        { en: 'This is not what I ordered.', ar: 'هذا ليس ما طلبته.', note: 'is not مع this' },
+      ],
+    },
+    {
+      levelId: L_STRUCTURE,
+      orderIndex: 3,
+      titleAr: 'الجملة الاستفهامية',
+      titleEn: 'Question Sentences',
+      explanation: `أنواع الأسئلة في الإنجليزية:
+
+١. Yes/No Questions (نعم/لا):
+Do/Does/Is/Are/Can + فاعل + فعل?
+
+٢. Wh- Questions (أسئلة التفاصيل):
+What / Where / When / Who / How / Why + do/does/is + فاعل + فعل?
+
+الفرق المهم:
+• Do = مع I/You/We/They
+• Does = مع He/She/It`,
+      examples: [
+        { en: 'Do you have a receipt?', ar: 'هل لديك إيصال؟', note: 'yes/no مع you' },
+        { en: 'Does she work here?', ar: 'هل هي تعمل هنا؟', note: 'yes/no مع she' },
+        { en: 'Where is the nearest ATM?', ar: 'أين أقرب صراف آلي؟', note: 'wh- question' },
+        { en: 'How much does it cost?', ar: 'كم يكلف؟', note: 'how much + does' },
+        { en: 'When does the train leave?', ar: 'متى يغادر القطار؟', note: 'when + does' },
+      ],
+    },
+    {
+      levelId: L_STRUCTURE,
+      orderIndex: 4,
+      titleAr: 'الأزمنة الأساسية',
+      titleEn: 'Basic Tenses',
+      explanation: `الأزمنة الثلاثة الأساسية التي تحتاجها يوميًا:
+
+١. المضارع البسيط (Simple Present):
+للعادات والحقائق — I work / She works
+
+٢. المضارع المستمر (Present Continuous):
+لما يحدث الآن — I am working / She is working
+
+٣. الماضي البسيط (Simple Past):
+لما حدث وانتهى — I worked / She worked
+
+علامات كل زمن:
+• كل يوم / دائمًا = مضارع بسيط
+• الآن / في هذه اللحظة = مضارع مستمر
+• أمس / الأسبوع الماضي = ماضي بسيط`,
+      examples: [
+        { en: 'I work every day.', ar: 'أعمل كل يوم.', note: 'مضارع بسيط — عادة' },
+        { en: 'I am working right now.', ar: 'أعمل الآن.', note: 'مضارع مستمر — الآن' },
+        { en: 'I worked yesterday.', ar: 'عملت أمس.', note: 'ماضي بسيط — انتهى' },
+        { en: 'She is studying English.', ar: 'هي تدرس الإنجليزية الآن.', note: 'مستمر مع she' },
+      ],
+    },
+  ]
+
+  for (const rule of rules) {
+    await prisma.grammarRule.create({
+      data: {
+        levelId: rule.levelId,
+        orderIndex: rule.orderIndex,
+        titleAr: rule.titleAr,
+        titleEn: rule.titleEn,
+        explanation: rule.explanation,
+        examples: rule.examples,
+      },
+    })
+  }
+
+  console.log(`  ✓ ${rules.length} grammar rules seeded`)
 }
 
 // ─────────────────────────────────────────

@@ -233,26 +233,12 @@ export const authController = {
 
       const { email, code } = req.body;
 
-      console.log('Verify email attempt:', { email, code, codeLength: code?.length });
-
       const verification = await prisma.emailVerification.findFirst({
         where: { email, code, used: false },
         orderBy: { createdAt: 'desc' },
       });
 
       if (!verification) {
-        // Debug: Check if there's ANY verification for this email
-        const allVerifications = await prisma.emailVerification.findMany({
-          where: { email },
-          orderBy: { createdAt: 'desc' },
-          take: 3,
-        });
-        console.log('All verifications for email:', allVerifications.map(v => ({
-          code: v.code,
-          used: v.used,
-          expired: v.expiresAt < new Date(),
-          createdAt: v.createdAt,
-        })));
         return errorResponse(res, 'الرمز غير صحيح أو منتهي الصلاحية', 400);
       }
 

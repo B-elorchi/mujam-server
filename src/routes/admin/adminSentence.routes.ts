@@ -44,6 +44,19 @@ router.post(
   adminSentenceController.createSentence
 );
 
+// POST update grammar tips only (sentence id)
+router.post(
+  '/sentences/:sentenceId/grammar',
+  [
+    body('grammarTipAr').optional().trim().isLength({ max: 4000 }),
+    body('grammarTipEn').optional().trim().isLength({ max: 4000 }),
+    body('pronounTipAr').optional().trim().isLength({ max: 4000 }),
+    body('grammarCategory').optional().trim().isLength({ max: 64 }),
+    body('difficultyNote').optional().trim().isLength({ max: 4000 }),
+  ],
+  adminSentenceController.updateSentenceGrammar
+);
+
 // PATCH update sentence
 router.patch(
   '/sentences/:id',
@@ -55,6 +68,11 @@ router.patch(
     body('textEn').optional().trim().isLength({ min: 2, max: 500 }).withMessage('English text 2-500 chars'),
     body('textAr').optional().trim().isLength({ min: 2, max: 500 }).withMessage('Arabic text 2-500 chars'),
     body('orderIndex').optional().isInt({ min: 1 }).withMessage('Order index must be >= 1'),
+    body('grammarTipAr').optional().trim().isLength({ max: 4000 }),
+    body('grammarTipEn').optional().trim().isLength({ max: 4000 }),
+    body('pronounTipAr').optional().trim().isLength({ max: 4000 }),
+    body('grammarCategory').optional().trim().isLength({ max: 64 }),
+    body('difficultyNote').optional().trim().isLength({ max: 4000 }),
   ],
   adminSentenceController.updateSentence
 );

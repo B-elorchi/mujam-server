@@ -1,12 +1,17 @@
 import dotenv from 'dotenv';
+import http from 'http';
 import { buildApp } from './app';
 import { initRedis, closeRedis } from './config/redis';
 import { initNotificationQueue, closeNotificationQueue } from './queues/notifications.queue';
+import { initSockets } from './sockets';
 
 dotenv.config();
 initRedis();
 
 const app = buildApp();
+const httpServer = http.createServer(app);
+initSockets(httpServer);
+
 const PORT = process.env.PORT || 4000;
 
 const shutdown = async (signal: string) => {
@@ -25,13 +30,13 @@ process.on('SIGINT', () => void shutdown('SIGINT'));
 
 void initNotificationQueue()
   .then(() => {
-    app.listen(PORT, () => {
+    httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on port ${PORT}`);
       console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
       if (process.env.REDIS_URL) {
-        console.log('Redis: connected (BullMQ + real-time notifications)');
+        console.log('Redis: connected (BullMQ + real-time notifications + Socket.io)');
       } else {
-        console.log('Redis: not configured (direct DB notifications, no SSE push)');
+        console.log('Redis: not configured (direct DB notifications, Socket.io without Redis adapter)');
       }
     });
   })

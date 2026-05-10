@@ -5,6 +5,14 @@ import { successResponse, errorResponse } from '../utils/apiResponse';
 import { uploadFile, deleteFile } from '../services/storage';
 import { textToSpeech, textToSpeechSlow } from '../services/ai/tts.service';
 
+function coerceOptionalString(body: Record<string, unknown>, key: string): string | null | undefined {
+  if (body[key] === undefined) return undefined;
+  const v = body[key];
+  if (v === null || v === '') return null;
+  if (typeof v === 'string') return v.trim();
+  return String(v).trim();
+}
+
 export const adminSentenceController = {
   // GET sentences for a level
   getSentences: async (req: Request, res: Response): Promise<Response> => {
@@ -100,6 +108,45 @@ export const adminSentenceController = {
     }
   },
 
+  updateSentenceGrammar: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const errors = validationResult(req);
+      if (!errors.isEmpty()) {
+        return errorResponse(res, errors.array()[0].msg, 400);
+      }
+
+      const sentenceId = req.params.sentenceId as string;
+      const body = req.body as Record<string, unknown>;
+
+      const existing = await prisma.sentence.findUnique({ where: { id: sentenceId } });
+      if (!existing) {
+        return errorResponse(res, 'الجملة غير موجودة', 404);
+      }
+
+      const gAr = coerceOptionalString(body, 'grammarTipAr');
+      const gEn = coerceOptionalString(body, 'grammarTipEn');
+      const pAr = coerceOptionalString(body, 'pronounTipAr');
+      const cat = coerceOptionalString(body, 'grammarCategory');
+      const diff = coerceOptionalString(body, 'difficultyNote');
+
+      const sentence = await prisma.sentence.update({
+        where: { id: sentenceId },
+        data: {
+          ...(gAr !== undefined && { grammarTipAr: gAr }),
+          ...(gEn !== undefined && { grammarTipEn: gEn }),
+          ...(pAr !== undefined && { pronounTipAr: pAr }),
+          ...(cat !== undefined && { grammarCategory: cat }),
+          ...(diff !== undefined && { difficultyNote: diff }),
+        },
+      });
+
+      return successResponse(res, sentence, 'تم تحديث القواعد لهذه الجملة');
+    } catch (error) {
+      console.error('Update sentence grammar error:', error);
+      return errorResponse(res, 'خطأ في الخادم', 500);
+    }
+  },
+
   // PATCH update sentence
   updateSentence: async (req: Request, res: Response): Promise<Response> => {
     try {
@@ -110,6 +157,11 @@ export const adminSentenceController = {
 
       const id = req.params.id as string;
       const { textEn, textAr, orderIndex } = req.body;
+      const grammarTipAr = coerceOptionalString(req.body as Record<string, unknown>, 'grammarTipAr');
+      const grammarTipEn = coerceOptionalString(req.body as Record<string, unknown>, 'grammarTipEn');
+      const pronounTipAr = coerceOptionalString(req.body as Record<string, unknown>, 'pronounTipAr');
+      const grammarCategory = coerceOptionalString(req.body as Record<string, unknown>, 'grammarCategory');
+      const difficultyNote = coerceOptionalString(req.body as Record<string, unknown>, 'difficultyNote');
 
       const existing = await prisma.sentence.findUnique({ where: { id } });
       if (!existing) {
@@ -120,6 +172,11 @@ export const adminSentenceController = {
       if (textEn !== undefined) updateData.textEn = textEn;
       if (textAr !== undefined) updateData.textAr = textAr;
       if (orderIndex !== undefined) updateData.orderIndex = orderIndex;
+      if (grammarTipAr !== undefined) updateData.grammarTipAr = grammarTipAr;
+      if (grammarTipEn !== undefined) updateData.grammarTipEn = grammarTipEn;
+      if (pronounTipAr !== undefined) updateData.pronounTipAr = pronounTipAr;
+      if (grammarCategory !== undefined) updateData.grammarCategory = grammarCategory;
+      if (difficultyNote !== undefined) updateData.difficultyNote = difficultyNote;
 
       // Handle file uploads if present
       if (req.files) {

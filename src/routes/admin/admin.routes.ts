@@ -11,6 +11,8 @@ import adminSentenceRoutes from './adminSentence.routes';
 import adminGameRoutes from './adminGame.routes';
 import adminQuizRoutes from './adminQuiz.routes';
 import adminStoryRoutes from './adminStory.routes';
+import adminGrammarRuleRoutes from './adminGrammarRule.routes';
+import adminCommunityRoutes from './adminCommunity.routes';
 
 const router = Router();
 
@@ -26,5 +28,7 @@ router.use('/', adminSentenceRoutes); // Mounts /admin/sentences and /admin/leve
 router.use('/', adminGameRoutes); // Mounts /admin/games
 router.use('/', adminQuizRoutes); // Mounts /admin/quizzes
 router.use('/', adminStoryRoutes); // Mounts /admin/stories
+router.use('/', adminGrammarRuleRoutes);
+router.use('/community', adminCommunityRoutes);
 
 export default router;

@@ -73,6 +73,29 @@ enum BlogStatus {
   ARCHIVED
 }
 
+enum CommunityMemberStatus {
+  PENDING
+  ACTIVE
+  BANNED
+}
+
+enum CommunityMessageType {
+  TEXT
+  AUDIO
+}
+
+enum CommunityRoomType {
+  PUBLIC
+  PRACTICE
+  QA
+}
+
+enum PracticeInvitationStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+}
+
 // ─────────────────────────────────────────
 // USERS & AUTH
 // ─────────────────────────────────────────
@@ -106,10 +129,14 @@ model User {
   streak            UserStreak?
   achievements      UserAchievement[]
   notifications     UserNotification[]
-  referralsMade     Referral[]       @relation("ReferrerRelation")
-  referredBy        Referral?        @relation("ReferredRelation")
-  levelCompletion   UserLevelCompletion[]
-  aiUsageLogs       AIUsageLog[]
+  referralsMade         Referral[]       @relation("ReferrerRelation")
+  referredBy            Referral?        @relation("ReferredRelation")
+  levelCompletion       UserLevelCompletion[]
+  aiUsageLogs           AIUsageLog[]
+  communityMemberships         CommunityMember[]
+  communityMessages            CommunityMessage[]
+  sentPracticeInvitations      PracticeInvitation[] @relation("SentInvitations")
+  receivedPracticeInvitations  PracticeInvitation[] @relation("ReceivedInvitations")
 
   @@index([email])
   @@index([plan])
@@ -172,20 +199,22 @@ model Subscription {
 // ─────────────────────────────────────────
 
 model Level {
-  id              Int        @id
+  id              Int           @id
   titleAr         String
   titleEn         String
   descriptionAr   String?
   icon            String?
-  orderIndex      Int        @unique
-  isFree          Boolean    @default(false)
-  isActive        Boolean    @default(true)
+  orderIndex      Int           @unique
+  levelType       String        @default("sentences") // "sentences" | "grammar"
+  isFree          Boolean       @default(false)
+  isActive        Boolean       @default(true)
   sentences       Sentence[]
   games           Game[]
   quiz            LevelQuiz?
   stories         Story[]
   userCompletion  UserLevelCompletion[]
   aiScenarios     AIScenario[]
+  grammarRules    GrammarRule[]
 }
 
 model Sentence {
@@ -196,6 +225,11 @@ model Sentence {
   audioUrlNormal  String?
   audioUrlSlow    String?
   orderIndex      Int
+  grammarTipAr    String?
+  grammarTipEn    String?
+  pronounTipAr    String?
+  grammarCategory String?
+  difficultyNote  String?
   isActive        Boolean  @default(true)
   createdAt       DateTime @default(now())
   level           Level    @relation(fields: [levelId], references: [id])
@@ -204,6 +238,21 @@ model Sentence {
   quizQuestions   QuizQuestion[]
 
   @@unique([levelId, orderIndex])
+  @@index([levelId])
+}
+
+model GrammarRule {
+  id            String   @id @default(uuid())
+  levelId       Int
+  titleAr       String
+  titleEn       String
+  explanation   String
+  examples      Json
+  exercises     Json?
+  orderIndex    Int
+  isActive      Boolean  @default(true)
+  level         Level    @relation(fields: [levelId], references: [id], onDelete: Cascade)
+
   @@index([levelId])
 }
 
@@ -638,6 +687,71 @@ model PlatformSettings {
   premiumMonthlyPrice Float   @default(9.99)
   premiumYearlyPrice  Float   @default(7.99)
   trialDays           Int     @default(7)
-  featureFlags        Json    @default("{}")
-  updatedAt           DateTime @updatedAt
+  featureFlags          Json    @default("{}")
+  communityAutoAccept   Boolean @default(true)
+  updatedAt             DateTime @updatedAt
+}
+
+// ─────────────────────────────────────────
+// COMMUNITY
+// ─────────────────────────────────────────
+
+model CommunityRoom {
+  id          String            @id @default(uuid())
+  name        String
+  nameAr      String
+  description String?
+  icon        String            @default("💬")
+  type        CommunityRoomType @default(PUBLIC)
+  isActive    Boolean           @default(true)
+  isDefault   Boolean           @default(false)
+  createdAt   DateTime          @default(now())
+  members     CommunityMember[]
+  messages    CommunityMessage[]
+  practiceInvitations PracticeInvitation[]
+}
+
+model CommunityMember {
+  id         String                @id @default(uuid())
+  userId     String
+  roomId     String
+  status     CommunityMemberStatus @default(ACTIVE)
+  joinedAt   DateTime              @default(now())
+  lastReadAt DateTime?
+  user       User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room       CommunityRoom         @relation(fields: [roomId], references: [id])
+
+  @@unique([userId, roomId])
+  @@index([userId])
+}
+
+model CommunityMessage {
+  id            String               @id @default(uuid())
+  roomId        String
+  userId        String
+  type          CommunityMessageType @default(TEXT)
+  content       String?
+  audioUrl      String?
+  audioDuration Int?
+  createdAt     DateTime             @default(now())
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  room          CommunityRoom        @relation(fields: [roomId], references: [id])
+
+  @@index([roomId, createdAt])
+}
+
+model PracticeInvitation {
+  id            String                    @id @default(uuid())
+  fromUserId    String
+  toUserId      String
+  privateRoomId String?
+  status        PracticeInvitationStatus  @default(PENDING)
+  createdAt     DateTime                  @default(now())
+  updatedAt     DateTime                  @updatedAt
+  fromUser      User                      @relation("SentInvitations", fields: [fromUserId], references: [id], onDelete: Cascade)
+  toUser        User                      @relation("ReceivedInvitations", fields: [toUserId], references: [id], onDelete: Cascade)
+  privateRoom   CommunityRoom?            @relation(fields: [privateRoomId], references: [id])
+
+  @@index([toUserId, status])
+  @@index([fromUserId])
 }

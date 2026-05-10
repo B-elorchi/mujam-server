@@ -13,6 +13,12 @@ import prisma from '../config/database';
  */
 export async function checkLevelCompletion(userId: string, levelId: number) {
     try {
+        const levelMeta = await prisma.level.findUnique({
+            where: { id: levelId },
+            select: { levelType: true },
+        });
+        const isGrammarLevel = levelMeta?.levelType === 'grammar';
+
         // 1. Check Sentences
         const totalSentences = await prisma.sentence.count({
             where: { levelId, isActive: true },
@@ -28,35 +34,39 @@ export async function checkLevelCompletion(userId: string, levelId: number) {
 
         if (completedSentences < totalSentences) return false;
 
-        // 2. Check Games
-        const totalGames = await prisma.game.count({
-            where: { levelId, isActive: true },
-        });
+        // 2. Check Games — optional practice games on grammar levels; do not gate completion
+        if (!isGrammarLevel) {
+            const totalGames = await prisma.game.count({
+                where: { levelId, isActive: true },
+            });
 
-        const completedGames = await prisma.userGameProgress.count({
-            where: {
-                userId,
-                game: { levelId },
-                completed: true,
-            },
-        });
-
-        if (completedGames < totalGames) return false;
-
-        // 3. Check Quiz
-        const quiz = await prisma.levelQuiz.findUnique({
-            where: { levelId },
-        });
-
-        if (quiz) {
-            const quizPassed = await prisma.userQuizAttempt.findFirst({
+            const completedGames = await prisma.userGameProgress.count({
                 where: {
                     userId,
-                    quizId: quiz.id,
-                    passed: true,
+                    game: { levelId },
+                    completed: true,
                 },
             });
-            if (!quizPassed) return false;
+
+            if (completedGames < totalGames) return false;
+        }
+
+        // 3. Check Quiz — no quiz requirement on grammar levels
+        if (!isGrammarLevel) {
+            const quiz = await prisma.levelQuiz.findUnique({
+                where: { levelId },
+            });
+
+            if (quiz) {
+                const quizPassed = await prisma.userQuizAttempt.findFirst({
+                    where: {
+                        userId,
+                        quizId: quiz.id,
+                        passed: true,
+                    },
+                });
+                if (!quizPassed) return false;
+            }
         }
 
         // 4. Check Shadowing (Stories)
@@ -101,10 +111,20 @@ export async function checkLevelCompletion(userId: string, levelId: number) {
         });
 
         if (user && user.currentLevel === levelId) {
-            const nextLevel = await prisma.level.findFirst({
-                where: { orderIndex: { gt: levelId } },
-                orderBy: { orderIndex: 'asc' },
+            const finishedLevel = await prisma.level.findUnique({
+                where: { id: levelId },
+                select: { orderIndex: true },
             });
+
+            const nextLevel = finishedLevel
+                ? await prisma.level.findFirst({
+                    where: {
+                        orderIndex: { gt: finishedLevel.orderIndex },
+                        isActive: true,
+                    },
+                    orderBy: { orderIndex: 'asc' },
+                })
+                : null;
 
             if (nextLevel) {
                 await prisma.user.update({

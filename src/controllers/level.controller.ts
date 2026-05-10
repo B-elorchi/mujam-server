@@ -5,6 +5,10 @@ import { getPagination } from '../utils/pagination';
 import { checkLevelCompletion } from '../utils/progress.utils';
 import { trackLearningActivity } from '../utils/gamification';
 
+function hasPremiumAccess(..._args: unknown[]): boolean {
+  return true;
+}
+
 export const levelController = {
   getLevels: async (req: Request, res: Response): Promise<Response> => {
     try {
@@ -26,10 +30,13 @@ export const levelController = {
             select: {
               sentences: true,
               games: true,
+              grammarRules: true,
             },
           },
         },
       });
+
+      const premiumOk = user ? hasPremiumAccess() : false;
 
       const levelsWithProgress = await Promise.all(
         levels.map(async (level) => {
@@ -51,15 +58,23 @@ export const levelController = {
           });
 
           const totalSentences = await prisma.sentence.count({
-            where: { levelId: level.id },
+            where: { levelId: level.id, isActive: true },
           });
 
-          const isLocked = false;
+          const isLocked =
+            !level.isFree && !premiumOk;
+
+          let progress = 0;
+          if (level.levelType === 'grammar') {
+            progress = completion?.completed ? 100 : 0;
+          } else {
+            progress = totalSentences > 0 ? Math.round((sentenceProgress / totalSentences) * 100) : completion?.completed ? 100 : 0;
+          }
 
           return {
             ...level,
             isLocked,
-            progress: totalSentences > 0 ? Math.round((sentenceProgress / totalSentences) * 100) : 0,
+            progress,
             completed: completion?.completed || false,
           };
         })
@@ -84,6 +99,7 @@ export const levelController = {
             select: {
               sentences: true,
               games: true,
+              grammarRules: true,
             },
           },
         },
@@ -102,9 +118,23 @@ export const levelController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const isLocked = false;
+      const premiumOk = hasPremiumAccess();
+      const isLocked = !level.isFree && !premiumOk;
 
-      return successResponse(res, { ...level, isLocked });
+      const nextLevel = await prisma.level.findFirst({
+        where: {
+          orderIndex: { gt: level.orderIndex },
+          isActive: true,
+        },
+        orderBy: { orderIndex: 'asc' },
+        select: { id: true },
+      });
+
+      return successResponse(res, {
+        ...level,
+        isLocked,
+        nextLevelId: nextLevel?.id ?? null,
+      });
     } catch (error) {
       console.error('Get level error:', error);
       return errorResponse(res, 'Server error', 500);
@@ -131,11 +161,19 @@ export const levelController = {
 
       const level = await prisma.level.findUnique({
         where: { id: levelId },
-        select: { isFree: true, id: true },
+        select: { isFree: true, id: true, levelType: true },
       });
 
       if (!level) {
         return errorResponse(res, 'Level not found', 404);
+      }
+
+      if (level.levelType === 'grammar') {
+        return errorResponse(res, 'This level uses grammar rules, not sentences', 400, 'GRAMMAR_LEVEL');
+      }
+
+      if (!level.isFree && !hasPremiumAccess()) {
+        return errorResponse(res, 'Premium required for this level', 403, 'PREMIUM_REQUIRED');
       }
 
       const [sentences, total] = await Promise.all([
@@ -340,6 +378,128 @@ export const levelController = {
       });
     } catch (error) {
       console.error('Get progress error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  getGrammarRules: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const levelId = parseInt(req.params.id as string, 10);
+      const level = await prisma.level.findUnique({ where: { id: levelId } });
+      if (!level) {
+        return errorResponse(res, 'Level not found', 404);
+      }
+      if (level.levelType !== 'grammar') {
+        return errorResponse(res, 'Not a grammar level', 400, 'NOT_GRAMMAR_LEVEL');
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { plan: true, role: true },
+      });
+      if (!user) {
+        return errorResponse(res, 'User not found', 404);
+      }
+      if (!level.isFree && !hasPremiumAccess()) {
+        return errorResponse(res, 'Premium required for this level', 403, 'PREMIUM_REQUIRED');
+      }
+
+      const rules = await prisma.grammarRule.findMany({
+        where: { levelId, isActive: true },
+        orderBy: { orderIndex: 'asc' },
+      });
+
+      return successResponse(res, { rules });
+    } catch (error) {
+      console.error('Get grammar rules error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  getGrammarRuleById: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const levelId = parseInt(req.params.id as string, 10);
+      const ruleId = req.params.ruleId as string;
+
+      const level = await prisma.level.findUnique({ where: { id: levelId } });
+      if (!level) {
+        return errorResponse(res, 'Level not found', 404);
+      }
+      if (level.levelType !== 'grammar') {
+        return errorResponse(res, 'Not a grammar level', 400, 'NOT_GRAMMAR_LEVEL');
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { plan: true, role: true },
+      });
+      if (!user) {
+        return errorResponse(res, 'User not found', 404);
+      }
+      if (!level.isFree && !hasPremiumAccess()) {
+        return errorResponse(res, 'Premium required for this level', 403, 'PREMIUM_REQUIRED');
+      }
+
+      const rule = await prisma.grammarRule.findFirst({
+        where: { id: ruleId, levelId, isActive: true },
+      });
+      if (!rule) {
+        return errorResponse(res, 'Grammar rule not found', 404);
+      }
+
+      return successResponse(res, { rule });
+    } catch (error) {
+      console.error('Get grammar rule error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  completeGrammarLevel: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const levelId = parseInt(req.params.id as string, 10);
+      const level = await prisma.level.findUnique({ where: { id: levelId } });
+      if (!level) {
+        return errorResponse(res, 'Level not found', 404);
+      }
+      if (level.levelType !== 'grammar') {
+        return errorResponse(res, 'Not a grammar level', 400, 'NOT_GRAMMAR_LEVEL');
+      }
+
+      const user = await prisma.user.findUnique({
+        where: { id: req.userId },
+        select: { plan: true, role: true },
+      });
+      if (!user) {
+        return errorResponse(res, 'User not found', 404);
+      }
+      if (!level.isFree && !hasPremiumAccess()) {
+        return errorResponse(res, 'Premium required for this level', 403, 'PREMIUM_REQUIRED');
+      }
+
+      const prior = await prisma.userLevelCompletion.findUnique({
+        where: { userId_levelId: { userId: req.userId!, levelId } },
+      });
+      const wasCompleted = Boolean(prior?.completed);
+
+      const ok = await checkLevelCompletion(req.userId!, levelId);
+      if (!ok) {
+        return errorResponse(res, 'Unable to complete level requirements', 400, 'COMPLETION_BLOCKED');
+      }
+
+      if (!wasCompleted) {
+        await trackLearningActivity(req.userId!, 'level', {
+          levelId,
+          levelTitle: level.titleAr,
+        });
+      }
+
+      const completion = await prisma.userLevelCompletion.findUnique({
+        where: { userId_levelId: { userId: req.userId!, levelId } },
+      });
+
+      return successResponse(res, { completed: true, completion });
+    } catch (error) {
+      console.error('Complete grammar level error:', error);
       return errorResponse(res, 'Server error', 500);
     }
   },
