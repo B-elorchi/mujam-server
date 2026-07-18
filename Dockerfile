@@ -21,6 +21,7 @@ RUN npx prisma generate
 
 # Build the application
 RUN npm run build
+RUN cp src/openapi.yaml dist/
 
 # Production image, copy all the files and run the app
 FROM base AS runner
