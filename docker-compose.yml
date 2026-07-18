@@ -1,38 +1,43 @@
-version: '3.8'
+version: "3.8"
 
 services:
+  api:
+    build: .
+    container_name: mujam-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    ports:
+      - "4000:4000"
+    depends_on:
+      - postgres
+      - redis
+    networks:
+      - dokploy-network
+
   postgres:
     image: postgres:16
     container_name: mujam-postgres
-    restart: always
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: password
       POSTGRES_DB: mujam_db
-    ports:
-      - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
+    networks:
+      - dokploy-network
 
-  pgadmin:
-    image: dpage/pgadmin4
-    container_name: mujam-pgadmin
-    restart: always
-    environment:
-      PGADMIN_DEFAULT_EMAIL: admin@mujam.com
-      PGADMIN_DEFAULT_PASSWORD: admin123
-    ports:
-      - "5050:80"
-    volumes:
-      - pgadmin_data:/var/lib/pgadmin
-    depends_on:
-      - postgres
+  redis:
+    image: redis:7-alpine
+    container_name: mujam-redis
+    restart: unless-stopped
+    networks:
+      - dokploy-network
 
 volumes:
   postgres_data:
-  pgadmin_data:
+
+networks:
+  dokploy-network:
+    external: true
