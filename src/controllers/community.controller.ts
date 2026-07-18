@@ -44,7 +44,7 @@ export const communityController = {
       const { id } = req.params;
       const limit = Math.min(parseInt(req.query.limit as string) || 30, 100);
       const before = req.query.before as string | undefined;
-      const messages = await svc.getRoomMessages(id, req.userId!, limit, before);
+      const messages = await svc.getRoomMessages(id as string, req.userId!, limit, before);
       return successResponse(res, messages);
     } catch (e: any) {
       if (e.message === 'NOT_MEMBER') return errorResponse(res, 'غير مصرح لك بالدخول', 403);
@@ -74,7 +74,7 @@ export const communityController = {
 
   markRead: async (req: Request, res: Response): Promise<Response> => {
     try {
-      await svc.markRoomRead(req.userId!, req.params.id);
+      await svc.markRoomRead(req.userId!, req.params.id as string);
       return successResponse(res, null);
     } catch {
       return errorResponse(res, 'فشل تحديث القراءة', 500);
@@ -111,7 +111,7 @@ export const communityController = {
     try {
       const { id } = req.params;
       const { accept } = req.body;
-      const result = await svc.respondToInvitation(id, req.userId!, Boolean(accept));
+      const result = await svc.respondToInvitation(id as string, req.userId!, Boolean(accept));
       return successResponse(res, result);
     } catch (e: any) {
       if (e.message === 'NOT_FOUND') return errorResponse(res, 'الدعوة غير موجودة', 404);

@@ -24,7 +24,7 @@ export const adminCommunityController = {
 
   updateRoom: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const room = await svc.adminUpdateRoom(req.params.id, req.body);
+      const room = await svc.adminUpdateRoom(req.params.id as string, req.body);
       return successResponse(res, room);
     } catch {
       return errorResponse(res, 'فشل تحديث الغرفة', 500);
@@ -45,7 +45,7 @@ export const adminCommunityController = {
       const { status } = req.body;
       if (!['ACTIVE', 'PENDING', 'BANNED'].includes(status))
         return errorResponse(res, 'حالة غير صالحة', 400);
-      const m = await svc.adminUpdateMember(req.params.id, status);
+      const m = await svc.adminUpdateMember(req.params.id as string, status);
       return successResponse(res, m);
     } catch {
       return errorResponse(res, 'فشل تحديث العضو', 500);
@@ -54,7 +54,7 @@ export const adminCommunityController = {
 
   deleteMessage: async (req: Request, res: Response): Promise<Response> => {
     try {
-      await svc.adminDeleteMessage(req.params.id);
+      await svc.adminDeleteMessage(req.params.id as string);
       return successResponse(res, null, 'تم حذف الرسالة');
     } catch {
       return errorResponse(res, 'فشل حذف الرسالة', 500);

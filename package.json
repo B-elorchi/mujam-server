@@ -44,6 +44,7 @@
     "@types/multer": "^2.1.0",
     "@types/node": "^25.4.0",
     "ai": "^6.0.116",
+    "axios": "^1.18.1",
     "bcryptjs": "^3.0.3",
     "bullmq": "^5.74.1",
     "cloudinary": "^2.9.0",
