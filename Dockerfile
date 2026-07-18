@@ -43,9 +43,9 @@ RUN chown -R expressjs:nodejs /app
 
 USER expressjs
 
-EXPOSE 4000
+EXPOSE 4001
 
-ENV PORT 4000
+ENV PORT 4001
 
 # Start the application
 CMD ["npm", "start"]

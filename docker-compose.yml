@@ -2,41 +2,22 @@ version: "3.8"
 
 services:
   api:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: mujam-api
-    restart: unless-stopped
+    restart: always
+    ports:
+      - "4001:4001"
     env_file:
       - .env
-    ports:
-      - "4000:4000"
-    depends_on:
-      - postgres
-      - redis
-    networks:
-      - dokploy-network
-
-  postgres:
-    image: postgres:16
-    container_name: mujam-postgres
-    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: password
-      POSTGRES_DB: mujam_db
+      - NODE_ENV=production
+      - PORT=4001
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./uploads:/app/uploads
     networks:
       - dokploy-network
-
-  redis:
-    image: redis:7-alpine
-    container_name: mujam-redis
-    restart: unless-stopped
-    networks:
-      - dokploy-network
-
-volumes:
-  postgres_data:
 
 networks:
   dokploy-network:
