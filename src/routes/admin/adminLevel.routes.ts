@@ -43,4 +43,7 @@ router.patch(
   adminLevelController.updateLevel
 );
 
+// DELETE level
+router.delete('/levels/:id', adminLevelController.deleteLevel);
+
 export default router;

@@ -118,4 +118,22 @@ export const adminLevelController = {
       return errorResponse(res, 'خطأ في الخادم', 500);
     }
   },
+
+  // DELETE level
+  deleteLevel: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const id = parseInt(req.params.id as string);
+
+      const existing = await prisma.level.findUnique({ where: { id } });
+      if (!existing) {
+        return errorResponse(res, 'Level not found', 404);
+      }
+
+      await prisma.level.delete({ where: { id } });
+      return successResponse(res, null, 'Level deleted successfully');
+    } catch (error) {
+      console.error('Delete level error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
 };
