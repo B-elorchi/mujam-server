@@ -9,8 +9,10 @@ router.use(authMiddleware);
 router.use(adminMiddleware);
 
 router.get('/users', adminUserController.getUsers);
+router.post('/users', adminUserController.createUser);
 router.get('/users/:id', adminUserController.getUser);
 router.patch('/users/:id', adminUserController.updateUser);
+router.delete('/users/:id', adminUserController.deleteUser);
 router.post('/users/:id/suspend', adminUserController.suspendUser);
 router.post('/users/:id/unsuspend', adminUserController.unsuspendUser);
 router.get('/subscriptions', adminUserController.getSubscriptions);
