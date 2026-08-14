@@ -134,45 +134,23 @@ export const placementController = {
         },
       });
 
-      // Update user level
+      // Keep assessed level in PlacementTest, but always start learning from level 1
+      const startLevel = 1;
       await prisma.user.update({
         where: { id: req.userId },
         data: {
-          currentLevel: assignedLevel,
+          currentLevel: startLevel,
           placementScore: scorePercent,
         },
       });
 
-      // Mark all levels BELOW assigned as "already known"
-      for (let level = 1; level < assignedLevel; level++) {
-        await prisma.userLevelCompletion.upsert({
-          where: {
-            userId_levelId: {
-              userId: req.userId!,
-              levelId: level,
-            },
-          },
-          create: {
-            userId: req.userId!,
-            levelId: level,
-            completed: true,
-            completedAt: new Date(),
-            quizPassed: true,
-          },
-          update: {
-            completed: true,
-            completedAt: new Date(),
-            quizPassed: true,
-          },
-        });
-      }
-
       return successResponse(res, {
         score: scorePercent,
         assignedLevel,
+        startLevel,
         correctAnswers: totalCorrect,
         totalQuestions: answers.length,
-        message: `رائع! مستواك هو المستوى ${assignedLevel}`,
+        message: `رائع! مستواك هو المستوى ${assignedLevel}. ستبدأ رحلتك من المستوى ${startLevel}`,
       });
     } catch (error) {
       console.error('Submit test error:', error);
