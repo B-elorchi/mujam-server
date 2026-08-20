@@ -1,53 +1,45 @@
-# Backend Dockerfile for Mujam Platform
-FROM node:18-alpine AS base
-RUN apk add --no-cache openssl
+# Backend Dockerfile for Mujam API (VPS)
+FROM node:20-alpine AS base
+RUN apk add --no-cache openssl libc6-compat
 
-# Install dependencies only when needed
 FROM base AS deps
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
-
-# Copy package files
-COPY package.json package-lock.json* ./
+COPY package.json package-lock.json ./
 RUN npm ci
 
-# Rebuild the source code only when needed
 FROM base AS builder
 WORKDIR /app
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
-
-# Generate Prisma Client
 RUN npx prisma generate
-
-# Build the application
 RUN npm run build
 RUN cp src/openapi.yaml dist/
 
-# Production image, copy all the files and run the app
 FROM base AS runner
 WORKDIR /app
 
-ENV NODE_ENV production
+ENV NODE_ENV=production
+ENV PORT=4000
 
-# Create a non-root user
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 expressjs
+RUN addgroup --system --gid 1001 nodejs \
+  && adduser --system --uid 1001 expressjs
 
-# Copy necessary files
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/node_modules ./node_modules
 COPY --from=builder /app/package.json ./package.json
 COPY --from=builder /app/prisma ./prisma
+COPY --from=builder /app/tsconfig.json ./tsconfig.json
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 
-# Change ownership
-RUN chown -R expressjs:nodejs /app
+RUN mkdir -p /app/uploads \
+  && chmod +x /usr/local/bin/docker-entrypoint.sh \
+  && chown -R expressjs:nodejs /app
 
 USER expressjs
 
-EXPOSE 4001
+EXPOSE 4000
 
-ENV PORT 4001
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||4000)+'/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-# Start the application
-CMD ["npm", "start"]
+ENTRYPOINT ["docker-entrypoint.sh"]

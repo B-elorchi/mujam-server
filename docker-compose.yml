@@ -1,24 +1,49 @@
-version: "3.8"
-
 services:
   api:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: mujam-api
-    restart: always
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     ports:
-      - "4001:4001"
+      - "${API_PORT:-4000}:4000"
     env_file:
       - .env
     environment:
-      - NODE_ENV=production
-      - PORT=4001
+      NODE_ENV: production
+      PORT: 4000
     volumes:
-      - ./uploads:/app/uploads
+      - api_uploads:/app/uploads
     networks:
       - dokploy-network
+      - mujam-network
+
+  seed:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mujam-seed
+    restart: "no"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: production
+      RUN_SEED: "true"
+    networks:
+      - dokploy-network
+      - mujam-network
+    profiles:
+      - seed
 
 networks:
   dokploy-network:
     external: true
+  mujam-network:
+    driver: bridge
+
+volumes:
+  api_uploads:
