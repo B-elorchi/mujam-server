@@ -19,6 +19,7 @@ services:
     networks:
       - dokploy-network
       - mujam-network
+      - postgres-network
 
   seed:
     build:
@@ -36,6 +37,7 @@ services:
     networks:
       - dokploy-network
       - mujam-network
+      - postgres-network
     profiles:
       - seed
 
@@ -44,6 +46,9 @@ networks:
     external: true
   mujam-network:
     driver: bridge
+  postgres-network:
+    external: true
+    name: system-apps-postgrespgdog-anepgn_default
 
 volumes:
   api_uploads:
