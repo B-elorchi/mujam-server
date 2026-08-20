@@ -102,7 +102,7 @@ export const adminUserController = {
         data: {
           name,
           email,
-          password: hashedPassword,
+          passwordHash: hashedPassword,
           plan: plan || 'FREE',
           currentLevel: currentLevel ? parseInt(currentLevel) : 1,
           emailVerified: true, // admin created users are auto-verified
