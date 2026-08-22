@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { transcribeAudio } from '../services/ai/stt.service';
+import { scorePronunciation } from '../services/ai/pronunciation.service';
 import { checkLevelCompletion } from '../utils/progress.utils';
 import { trackLearningActivity } from '../utils/gamification';
 
@@ -105,10 +106,15 @@ export const shadowingController = {
         );
       }
 
+      const originalText =
+        typeof req.body?.originalText === 'string' ? req.body.originalText : undefined;
+
       const result = await transcribeAudio(
         req.userId!,
         req.file.buffer,
-        req.file.mimetype
+        req.file.mimetype,
+        undefined,
+        originalText
       );
 
       console.log('Transcription result:', result.transcript);
@@ -149,32 +155,14 @@ export const shadowingController = {
         return errorResponse(res, 'Original text and user transcript required', 400);
       }
 
-      const originalWords = originalText.toLowerCase().trim().split(/\s+/);
-      const userWords = userTranscript.toLowerCase().trim().split(/\s+/);
-
-      // Use LCS (Longest Common Subsequence) to count correctly spoken words
-      // This handles insertions and deletions gracefully
-      const m = originalWords.length;
-      const n = userWords.length;
-      const dp: number[][] = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
-
-      for (let i = 1; i <= m; i++) {
-        for (let j = 1; j <= n; j++) {
-          if (originalWords[i - 1] === userWords[j - 1]) {
-            dp[i][j] = dp[i - 1][j - 1] + 1;
-          } else {
-            dp[i][j] = Math.max(dp[i - 1][j], dp[i][j - 1]);
-          }
-        }
-      }
-
-      const correctWords = dp[m][n];
-      const accuracy = Math.round((correctWords / originalWords.length) * 100);
+      const scored = scorePronunciation(originalText, userTranscript);
 
       return successResponse(res, {
-        accuracy,
-        correctWords,
-        totalWords: originalWords.length,
+        accuracy: scored.overallScore,
+        correctWords: scored.correctWords,
+        totalWords: scored.totalWords,
+        wordScores: scored.wordScores,
+        feedback: scored.feedback,
         originalLength: originalText.length,
         transcriptLength: userTranscript.length,
       });

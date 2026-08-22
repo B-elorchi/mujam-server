@@ -57,7 +57,8 @@ export async function textToSpeech(
         const response = await deepgram.speak.request(
             { text },
             {
-                model: voice, // Use the voice name as the model for Deepgram Aura
+                model: voice,
+                encoding: 'mp3',
             }
         )
 

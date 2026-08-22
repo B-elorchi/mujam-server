@@ -9,6 +9,26 @@ export interface STTResult {
     words?: Array<{ word: string; start: number; end: number }>
 }
 
+export function detectTranscriptLanguage(text?: string): 'en' | 'ar' | undefined {
+    if (!text || !text.trim()) return undefined
+    return /[\u0600-\u06FF]/.test(text) ? 'ar' : 'en'
+}
+
+function extractKeyterms(text: string, limit = 40): string[] {
+    const seen = new Set<string>()
+    const terms: string[] = []
+    for (const raw of text.split(/\s+/)) {
+        const word = raw.replace(/[^\p{L}\p{N}']/gu, '').trim()
+        if (word.length < 2) continue
+        const key = word.toLowerCase()
+        if (seen.has(key)) continue
+        seen.add(key)
+        terms.push(word)
+        if (terms.length >= limit) break
+    }
+    return terms
+}
+
 export async function transcribeAudio(
     userId: string,
     buffer: Buffer,
@@ -44,35 +64,45 @@ export async function transcribeAudio(
         throw new Error('AUDIO_SILENT: No audio detected. Please check your microphone and try again.')
     }
 
-    // Use Deepgram for speech-to-text transcription
-    // Use Nova-3 model which supports both Arabic and English
-    // If no language specified, use 'multi' for auto-detection (Nova-3 supports this)
-    const detectedLanguage = language || 'multi'
+    const detectedLanguage = language || detectTranscriptLanguage(prompt) || 'multi'
+    const keyterms = prompt ? extractKeyterms(prompt) : []
 
     console.log('STT Language Detection:', {
         providedLanguage: language,
         detectedLanguage,
+        keytermCount: keyterms.length,
         willUseModel: 'nova-3'
     })
 
-    const transcriptionOptions: any = {
-        // Nova-3 supports both Arabic and English with auto-detection
+    const transcriptionOptions: Record<string, unknown> = {
         model: 'nova-3',
         punctuate: true,
         smart_format: true,
         words: true,
         diarize: false,
         utterances: false,
-        // Only specify language if explicitly provided, otherwise let Nova-3 auto-detect
         ...(detectedLanguage !== 'multi' && { language: detectedLanguage }),
+        ...(keyterms.length > 0 && { keyterm: keyterms }),
     }
 
     console.log('STT Transcription Options:', transcriptionOptions)
 
-    const { result, error } = await deepgram.listen.prerecorded.transcribeFile(
+    let { result, error } = await deepgram.listen.prerecorded.transcribeFile(
         buffer,
-        transcriptionOptions
+        transcriptionOptions as any
     )
+
+    // Nova-3 keyterm is best-effort; retry without it if Deepgram rejects the option
+    if (error && keyterms.length > 0) {
+        console.warn('STT retrying without keyterms:', error)
+        const { keyterm: _ignored, ...withoutKeyterms } = transcriptionOptions
+        const retry = await deepgram.listen.prerecorded.transcribeFile(
+            buffer,
+            withoutKeyterms as any
+        )
+        result = retry.result
+        error = retry.error
+    }
 
     if (error) {
         console.error('Deepgram error:', error)
@@ -144,21 +174,29 @@ export async function generateWordTiming(
 ): Promise<Array<{ word: string; start: number; end: number }>> {
     console.log('Generating word timing for shadowing story...')
 
-    // Auto-detect language instead of hardcoding 'en'
-    // This allows both Arabic and English stories to work correctly
-    const result = await transcribeAudio(userId, buffer, mimeType, undefined, expectedText)
+    const language = detectTranscriptLanguage(expectedText)
+    const result = await transcribeAudio(userId, buffer, mimeType, language, expectedText)
+    const expectedWords = expectedText.trim().split(/\s+/).filter(Boolean)
 
     if (!result.words || result.words.length === 0) {
         console.warn('No word-level timing returned from Deepgram')
-        // Fallback: split text into words and estimate timing
-        const words = expectedText.split(/\s+/)
-        const estimatedDuration = result.duration || 10
-        const timePerWord = estimatedDuration / words.length
+        const estimatedDuration = result.duration || Math.max(4, expectedWords.length * 0.45)
+        const timePerWord = estimatedDuration / Math.max(expectedWords.length, 1)
 
-        return words.map((word, index) => ({
-            word: word.trim(),
+        return expectedWords.map((word, index) => ({
+            word,
             start: index * timePerWord,
             end: (index + 1) * timePerWord,
+        }))
+    }
+
+    // Keep timestamps from STT but label with the story words when counts match,
+    // so karaoke highlighting lines up with the text the student sees.
+    if (result.words.length === expectedWords.length) {
+        return expectedWords.map((word, index) => ({
+            word,
+            start: result.words![index].start,
+            end: result.words![index].end,
         }))
     }
 

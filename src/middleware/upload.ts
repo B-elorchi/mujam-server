@@ -4,11 +4,12 @@ import { Request } from 'express';
 const storage = multer.memoryStorage();
 
 const fileFilter = (_req: Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedAudioTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4'];
+  const allowedAudioTypes = ['audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/webm', 'audio/mp4', 'audio/x-m4a', 'audio/aac'];
   const allowedImageTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  const audioMime = (file.mimetype || '').toLowerCase().split(';')[0].trim();
   
   if (file.fieldname === 'audio') {
-    if (allowedAudioTypes.includes(file.mimetype)) {
+    if (allowedAudioTypes.includes(audioMime) || audioMime.startsWith('audio/')) {
       cb(null, true);
     } else {
       cb(new Error('Invalid audio file type. Allowed: mp3, wav, ogg, webm, m4a'));
