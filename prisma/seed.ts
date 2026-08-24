@@ -4,6 +4,7 @@
 
 import { Prisma, PrismaClient, GameType, UserRole, SubscriptionPlan, Difficulty } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { seedKidsCourses } from './seed-kids-courses'
 
 const prisma = new PrismaClient()
 
@@ -21,6 +22,7 @@ async function main() {
   await seedAchievements()
   await seedPlatformSettings()
   await seedNewsBanners()
+  await seedKidsCourses(prisma)
   await seedCommunityRooms()
   await seedShadowingStories()
   await seedQuizzes()

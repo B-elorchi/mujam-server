@@ -693,6 +693,39 @@ model NewsBanner {
 }
 
 // ─────────────────────────────────────────
+// KIDS COURSES (Moajam Kids modules + lessons)
+// ─────────────────────────────────────────
+
+model KidsModule {
+  id         String             @id // e.g. "alphabet", "numbers"
+  titleEn    String
+  titleAr    String
+  icon       String             // emoji key for UI
+  color      String             // blue|sky|yellow|pink|green|purple|orange
+  orderIndex Int                @unique
+  isActive   Boolean            @default(true)
+  progress   Int                @default(0) // 0-100 default display until per-child progress
+  stars      Int                @default(0) // 0-3 default display
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  screens    KidsLessonScreen[]
+
+  @@index([isActive, orderIndex])
+}
+
+model KidsLessonScreen {
+  id         String     @id @default(uuid())
+  moduleId   String
+  type       String     // flashcard|grid|matching|choice|complete
+  orderIndex Int
+  payload    Json       // screen fields matching frontend LessonScreen (minus type)
+  module     KidsModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, orderIndex])
+  @@index([moduleId])
+}
+
+// ─────────────────────────────────────────
 // BLOG
 // ─────────────────────────────────────────
 
