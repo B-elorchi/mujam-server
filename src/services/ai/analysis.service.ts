@@ -1,6 +1,7 @@
 import prisma from '../../config/database'
 import { openrouter } from '../../config/openrouter'
 import { ChatMessage } from './chat.service'
+import { estimateTokens, logGptUsage } from './usage.service'
 
 export interface SessionAnalysis {
     topMistakes: Array<{ category: string; count: number; example: string }>
@@ -76,6 +77,12 @@ export async function analyzeSession(
         response_format: { type: 'json_object' },
         temperature: 0.3,
     })
+
+    const model = process.env.OPENROUTER_DEFAULT_MODEL || 'openai/gpt-4o-mini'
+    const promptTokens = response.usage?.prompt_tokens || estimateTokens(summaryPrompt)
+    const completionTokens =
+      response.usage?.completion_tokens || estimateTokens(response.choices[0].message.content || '')
+    await logGptUsage(userId, model, promptTokens, completionTokens)
 
     const summary = JSON.parse(response.choices[0].message.content || '{}') as SessionAnalysis
 

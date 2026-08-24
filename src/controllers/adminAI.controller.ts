@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { gpt } from '../config/openai';
+import { serviceDisplayLabel, serviceTypeLabel } from '../services/ai/usage.service';
 
 export const adminAIController = {
   getAISettings: async (req: Request, res: Response): Promise<Response> => {
@@ -65,13 +66,15 @@ export const adminAIController = {
   testAISettings: async (req: Request, res: Response): Promise<Response> => {
     try {
       const { message } = req.body;
+      const userId = (req as any).userId as string | undefined;
 
       const settings = await prisma.aISettings.findFirst();
 
       const { content } = await gpt(
         [{ role: 'system', content: settings?.systemPrompt || 'You are an English tutor.' }, { role: 'user', content: message }],
         settings?.gptModel || 'gpt-4o-mini',
-        settings?.temperature || 0.7
+        settings?.temperature || 0.7,
+        userId
       );
 
       return successResponse(res, { response: content });
@@ -163,10 +166,28 @@ export const adminAIController = {
       const startDate = new Date();
       startDate.setDate(startDate.getDate() - days);
 
-      const usage = await prisma.aIUsageLog.findMany({
-        where: { createdAt: { gte: startDate } },
-        orderBy: { createdAt: 'asc' },
-      });
+      const monthStart = new Date();
+      monthStart.setDate(1);
+      monthStart.setHours(0, 0, 0, 0);
+
+      const [usage, recentRows, monthlyAgg, settings] = await Promise.all([
+        prisma.aIUsageLog.findMany({
+          where: { createdAt: { gte: startDate } },
+          orderBy: { createdAt: 'asc' },
+        }),
+        prisma.aIUsageLog.findMany({
+          where: { createdAt: { gte: startDate } },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+          include: { user: { select: { id: true, name: true } } },
+        }),
+        prisma.aIUsageLog.aggregate({
+          where: { createdAt: { gte: monthStart } },
+          _sum: { costUsd: true },
+          _count: true,
+        }),
+        prisma.aISettings.findFirst(),
+      ]);
 
       const byService = usage.reduce((acc, log) => {
         acc[log.service] = (acc[log.service] || 0) + log.costUsd;
@@ -178,6 +199,15 @@ export const adminAIController = {
         acc[day] = (acc[day] || 0) + log.costUsd;
         return acc;
       }, {} as Record<string, number>);
+
+      const totalCost = Object.values(byService).reduce((a, b) => a + b, 0);
+      const totalMessages = usage.filter((log) => log.service === 'gpt').length;
+      const totalSttMinutes = usage
+        .filter((log) => log.service === 'deepgram')
+        .reduce((sum, log) => sum + (log.durationMin || 0), 0);
+      const totalTtsChars = usage
+        .filter((log) => log.service === 'deepgram-tts')
+        .reduce((sum, log) => sum + (log.characters || 0), 0);
 
       const topUsers = await prisma.aIUsageLog.groupBy({
         by: ['userId'],
@@ -200,11 +230,36 @@ export const adminAIController = {
         totalCost: u._sum.costUsd || 0,
       }));
 
+      const budget = settings?.monthlyBudgetUsd || 50;
+      const monthlyUsed = monthlyAgg._sum.costUsd || 0;
+
+      const recentLogs = recentRows.map((log) => ({
+        id: log.id,
+        service: log.service,
+        model: serviceDisplayLabel(log.service),
+        type: serviceTypeLabel(log.service),
+        tokens: log.tokens,
+        characters: log.characters,
+        durationMin: log.durationMin,
+        costUsd: log.costUsd,
+        createdAt: log.createdAt,
+        userName: log.user?.name || 'Unknown',
+      }));
+
       return successResponse(res, {
-        totalCost: Object.values(byService).reduce((a, b) => a + b, 0),
+        totalCost,
+        totalMessages,
+        totalSttMinutes,
+        totalTtsChars,
         byService,
         byDay,
         topUsers: topUsersWithNames,
+        recentLogs,
+        monthly: {
+          used: monthlyUsed,
+          budget,
+          percentage: budget > 0 ? Math.round((monthlyUsed / budget) * 100) : 0,
+        },
       });
     } catch (error) {
       console.error('Get AI usage error:', error);

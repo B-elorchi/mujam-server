@@ -1,6 +1,5 @@
 import deepgram from '../../config/deepgram'
-import prisma from '../../config/database'
-import { Readable } from 'stream'
+import { logDeepgramSttUsage } from './usage.service'
 
 export interface STTResult {
     transcript: string
@@ -137,11 +136,13 @@ export async function transcribeAudio(
             confidence: alternative.confidence,
             words: alternative.words?.length || 0
         })
-        // Return empty result with warning flag
+        const duration = metadata?.duration || 0
+        // Deepgram still bills for the request — log usage
+        if (duration > 0) await logDeepgramSttUsage(userId, duration)
         return {
             transcript: '',
             language: (metadata as any)?.detected_language || 'unknown',
-            duration: metadata?.duration || 0,
+            duration,
             words: [],
         }
     }
@@ -157,8 +158,7 @@ export async function transcribeAudio(
         })),
     }
 
-    // Log cost
-    await logSTTCost(userId, sttResult.duration)
+    await logDeepgramSttUsage(userId, sttResult.duration)
 
     return sttResult
 }
@@ -201,18 +201,4 @@ export async function generateWordTiming(
     }
 
     return result.words
-}
-
-async function logSTTCost(userId: string, durationSeconds: number) {
-    // Deepgram Nova-2 pricing: ~$0.0043 per minute
-    const costPerMinute = 0.0043
-    const costUsd = (durationSeconds / 60) * costPerMinute
-    await prisma.aIUsageLog.create({
-        data: {
-            userId,
-            service: 'deepgram',
-            durationMin: durationSeconds / 60,
-            costUsd,
-        },
-    })
 }

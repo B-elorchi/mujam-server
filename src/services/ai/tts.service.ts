@@ -1,5 +1,5 @@
 import deepgram from '../../config/deepgram'
-import prisma from '../../config/database'
+import { logDeepgramTtsUsage } from './usage.service'
 
 // Deepgram Aura voices (English)
 export type TTSVoiceEN = 'aura-asteria-en' | 'aura-luna-en' | 'aura-stella-en' | 'aura-athena-en' | 'aura-hera-en' | 'aura-orion-en' | 'aura-arcas-en' | 'aura-perseus-en' | 'aura-angus-en' | 'aura-orpheus-en' | 'aura-helios-en' | 'aura-zeus-en'
@@ -75,9 +75,8 @@ export async function textToSpeech(
         }
         const buffer = Buffer.concat(chunks)
 
-        // Log cost only if userId is provided
         if (userId) {
-            await logTTSCost(userId, text)
+            await logDeepgramTtsUsage(userId, text)
         }
 
         return buffer
@@ -95,19 +94,4 @@ export async function textToSpeechSlow(text: string, userId?: string): Promise<B
     // For now, generate normal audio and add a note that frontend should use playbackRate
     // TODO: Implement audio processing with ffmpeg to actually slow down the audio file
     return textToSpeech(text, 'slow', userId)
-}
-
-async function logTTSCost(userId: string, text: string) {
-    const charCount = text.length
-    // Deepgram Aura pricing: $0.015 per 1,000 characters
-    const costPer1K = 0.015
-    const costUsd = (charCount / 1_000) * costPer1K
-    await prisma.aIUsageLog.create({
-        data: {
-            userId,
-            service: 'deepgram-tts',
-            characters: charCount,
-            costUsd,
-        },
-    })
 }

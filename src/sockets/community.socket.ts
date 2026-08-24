@@ -2,6 +2,7 @@ import { Server as SocketIOServer, Socket } from 'socket.io';
 import { saveMessage, validateMembership, sendPracticeInvitation, respondToInvitation } from '../services/community.service';
 import prisma from '../config/database';
 import { openrouter } from '../config/openrouter';
+import { estimateTokens, logGptUsage } from '../services/ai/usage.service';
 
 // Fixed bot user ID — created on first use
 const BOT_USER_ID = 'bot-mujam-qa-00000000-0000-0000-0000';
@@ -25,22 +26,30 @@ async function getQaRoomIds(): Promise<Set<string>> {
   return new Set(rooms.map((r) => r.id));
 }
 
-async function generateBotReply(userMessage: string): Promise<string> {
+async function generateBotReply(userMessage: string, requestingUserId: string): Promise<string> {
   try {
-    const completion = await openrouter.chat.completions.create({
-      model: process.env.OPENROUTER_DEFAULT_MODEL || 'openai/gpt-4o-mini',
-      messages: [
-        {
-          role: 'system',
-          content: `أنت مساعد منصة معجم لتعلم اللغة الإنجليزية. أجب على أسئلة الطلاب باللغة العربية بشكل مختصر ومفيد.
+    const model = process.env.OPENROUTER_DEFAULT_MODEL || 'openai/gpt-4o-mini';
+    const systemPrompt = `أنت مساعد منصة معجم لتعلم اللغة الإنجليزية. أجب على أسئلة الطلاب باللغة العربية بشكل مختصر ومفيد.
 المنصة تتيح: تعلم مستويات الإنجليزية، محادثة مع AI، تدريب الشادونج (استماع وتقليد)، ألعاب لغوية، اختبارات، ومجتمع للتدريب مع الزملاء.
-لا تذكر أسعاراً محددة. إذا كان السؤال لا يتعلق بالمنصة، اعتذر بلطف.`,
-        },
+لا تذكر أسعاراً محددة. إذا كان السؤال لا يتعلق بالمنصة، اعتذر بلطف.`;
+
+    const completion = await openrouter.chat.completions.create({
+      model,
+      messages: [
+        { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
       max_tokens: 300,
     });
-    return completion.choices[0]?.message?.content?.trim() || 'عذراً، لم أفهم سؤالك. هل يمكنك إعادة صياغته؟';
+
+    const reply = completion.choices[0]?.message?.content?.trim() || 'عذراً، لم أفهم سؤالك. هل يمكنك إعادة صياغته؟';
+    const promptTokens =
+      completion.usage?.prompt_tokens || estimateTokens(systemPrompt + userMessage);
+    const completionTokens =
+      completion.usage?.completion_tokens || estimateTokens(reply);
+    await logGptUsage(requestingUserId, model, promptTokens, completionTokens);
+
+    return reply;
   } catch {
     return 'عذراً، حدث خطأ مؤقت. يرجى المحاولة مرة أخرى.';
   }
@@ -87,7 +96,7 @@ export function registerCommunitySocket(io: SocketIOServer) {
 
         // Q&A bot reply
         if (qaRoomIds.has(roomId)) {
-          const reply = await generateBotReply(content.trim());
+          const reply = await generateBotReply(content.trim(), userId);
           const botMsg = await saveMessage(roomId, BOT_USER_ID, 'TEXT', reply);
           io.to(roomId).emit('new-message', botMsg);
         }
