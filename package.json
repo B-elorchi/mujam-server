@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "tsc && node -e \"require('fs').copyFileSync('src/openapi.yaml','dist/openapi.yaml')\"",
-    "start": "node dist/server.js",
+    "start": "prisma migrate deploy && node dist/server.js",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:migrate": "prisma migrate dev",
