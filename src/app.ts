@@ -57,9 +57,22 @@ export function buildApp(): Application {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  const openapiPath = path.join(__dirname, 'openapi.yaml');
-  const openapiSpec = YAML.parse(fs.readFileSync(openapiPath, 'utf8'));
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+  const openapiCandidates = [
+    path.join(__dirname, 'openapi.yaml'),
+    path.join(process.cwd(), 'dist', 'openapi.yaml'),
+    path.join(process.cwd(), 'src', 'openapi.yaml'),
+    path.join(process.cwd(), 'openapi.yaml'),
+  ];
+  const openapiPath = openapiCandidates.find((p) => fs.existsSync(p));
+  if (openapiPath) {
+    const openapiSpec = YAML.parse(fs.readFileSync(openapiPath, 'utf8'));
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+  } else {
+    console.warn(
+      'openapi.yaml not found — /api-docs disabled. Looked in:',
+      openapiCandidates.join(', ')
+    );
+  }
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
