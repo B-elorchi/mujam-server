@@ -141,6 +141,7 @@ model User {
   weeklyChallengeProgress      WeeklyChallengeProgress[]
   loginEvents                  LoginEvent[]
   sessions                     UserSession[]
+  invitationsCreated           UserInvitation[] @relation("UserInvitationsCreated")
 
   @@index([email])
   @@index([plan])
@@ -176,6 +177,25 @@ model PasswordReset {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────
+// USER INVITATIONS (invite-only registration)
+// ─────────────────────────────────────────
+
+model UserInvitation {
+  id          String    @id @default(uuid())
+  email       String
+  tokenHash   String    @unique // sha256 of single-use invite token (never store raw token)
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  invitedById String
+  createdAt   DateTime  @default(now())
+  invitedBy   User      @relation("UserInvitationsCreated", fields: [invitedById], references: [id])
+
+  @@index([email])
+  @@index([expiresAt])
 }
 
 // ─────────────────────────────────────────

@@ -190,3 +190,38 @@ export const sendTrialExpiryWarning = async (email: string, name: string, daysLe
     html,
   });
 };
+
+export const sendInvitationEmail = async (email: string, invitationLink: string, expiresAt: Date) => {
+  const expiresLabel = expiresAt.toLocaleDateString('ar-MA', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  const html = `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head>
+      <meta charset="UTF-8">
+      <title>دعوة للانضمام إلى معجَم</title>
+    </head>
+    <body style="font-family: Tahoma, Arial, sans-serif; background: #f5f5f5; padding: 20px;">
+      <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
+        <h2 style="color: #2563eb; text-align: center;">دعوة للانضمام إلى معجَم</h2>
+        <p style="color: #333; font-size: 16px;">تمت دعوتك لإنشاء حساب على منصة معجَم لتعلّم الإنجليزية.</p>
+        <p style="color: #333; font-size: 14px;">اضغط الزر أدناه لإكمال التسجيل باستخدام هذا البريد: <strong dir="ltr">${email}</strong></p>
+        <div style="text-align: center; margin: 28px 0;">
+          <a href="${invitationLink}" style="display: inline-block; background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">إنشاء حسابي</a>
+        </div>
+        <p style="color: #666; font-size: 13px;">الدعوة صالحة حتى ${expiresLabel} ويمكن استخدامها مرة واحدة فقط.</p>
+        <p style="color: #999; font-size: 12px; word-break: break-all;">إذا لم يعمل الزر، انسخ الرابط:<br/>${invitationLink}</p>
+      </div>
+    </body>
+    </html>
+  `;
+
+  await sendEmail({
+    to: email,
+    subject: 'دعوة للانضمام إلى معجَم',
+    html,
+  });
+};
