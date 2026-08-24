@@ -90,4 +90,76 @@ export const kidsController = {
       return errorResponse(res, 'Server error', 500);
     }
   },
+
+  /**
+   * Parent dashboard: children whose parentEmail matches the logged-in user.
+   * Also returns the caller's own profile if they have kids access (self view).
+   */
+  parentReport: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const parentUserId = req.userId!;
+      const me = await prisma.user.findUnique({
+        where: { id: parentUserId },
+        select: { id: true, email: true, name: true },
+      });
+      if (!me) return errorResponse(res, 'User not found', 404);
+
+      const children = await prisma.user.findMany({
+        where: {
+          OR: [
+            { parentEmail: me.email },
+            { id: me.id, accessKids: true },
+          ],
+        },
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          avatarUrl: true,
+          accessKids: true,
+          parentEmail: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: 'asc' },
+        take: 10,
+      });
+
+      // Deduplicate if parent is also a kids user linked to self
+      const seen = new Set<string>();
+      const unique = children.filter((c) => {
+        if (seen.has(c.id)) return false;
+        seen.add(c.id);
+        return true;
+      });
+
+      const moduleCount = await prisma.kidsModule.count({ where: { isActive: true } });
+
+      const reportChildren = unique.map((c) => ({
+        id: c.id,
+        name: c.name,
+        email: c.email,
+        avatar: c.avatarUrl || '🧒',
+        isSelf: c.id === me.id,
+        // Progress fields until per-child lesson tracking exists
+        lessonsCompleted: 0,
+        stars: 0,
+        minutesThisWeek: 0,
+        moduleCount,
+      }));
+
+      return successResponse(res, {
+        parent: { id: me.id, email: me.email, name: me.name },
+        children: reportChildren,
+        weekKey: (() => {
+          const d = new Date();
+          const onejan = new Date(d.getFullYear(), 0, 1);
+          const week = Math.ceil(((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
+          return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+        })(),
+      });
+    } catch (error) {
+      console.error('Kids parent report error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
 };

@@ -7,11 +7,13 @@ import { successResponse, errorResponse } from '../utils/apiResponse';
 import { sendVerificationEmail, sendPasswordResetEmail, sendWelcomeEmail } from '../config/email';
 import { recordLogin } from '../services/sessionTracking.service';
 import {
+  accessFlagsFromInvite,
   findInvitationByRawToken,
   getInvitationStatus,
   invitationErrorMessage,
   normalizeInviteEmail,
 } from '../services/invitation.service';
+import { sendParentProgressInviteEmail } from '../config/email';
 
 export const authController = {
   register: async (req: Request, res: Response): Promise<Response> => {
@@ -43,6 +45,10 @@ export const authController = {
 
       const passwordHash = await hashPassword(password);
       const verificationCode = generateRandomCode(6);
+      const flags = accessFlagsFromInvite(inviteStatus.invitation.access as 'MOAJAM' | 'KIDS' | 'BOTH');
+      const parentEmail = inviteStatus.invitation.parentEmail
+        ? normalizeInviteEmail(inviteStatus.invitation.parentEmail)
+        : null;
 
       let user;
       try {
@@ -66,6 +72,9 @@ export const authController = {
               plan: 'FREE',
               currentLevel: currentLevel || 0,
               placementScore: placementScore || 0,
+              accessMoajam: flags.accessMoajam,
+              accessKids: flags.accessKids,
+              parentEmail: flags.accessKids ? parentEmail : null,
             },
           });
 
@@ -101,6 +110,14 @@ export const authController = {
         console.error('Email sending failed during registration:', emailError);
       }
 
+      if (user.parentEmail) {
+        try {
+          await sendParentProgressInviteEmail(user.parentEmail, registeredEmail, user.name);
+        } catch (parentErr) {
+          console.error('Parent progress email failed:', parentErr);
+        }
+      }
+
       const tokenPayload = { userId: user.id, email: user.email, role: user.role };
       const accessToken = generateAccessToken(tokenPayload);
       const refreshToken = generateRefreshToken(tokenPayload);
@@ -116,7 +133,16 @@ export const authController = {
       return successResponse(
         res,
         {
-          user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role },
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            plan: user.plan,
+            role: user.role,
+            accessMoajam: user.accessMoajam,
+            accessKids: user.accessKids,
+            parentEmail: user.parentEmail,
+          },
           accessToken,
           refreshToken,
         },
@@ -177,6 +203,9 @@ export const authController = {
             plan: user.plan,
             currentLevel: user.currentLevel,
             emailVerified: user.emailVerified,
+            accessMoajam: user.accessMoajam,
+            accessKids: user.accessKids,
+            parentEmail: user.parentEmail,
           },
           accessToken,
           refreshToken,
@@ -483,6 +512,9 @@ export const authController = {
           currentLevel: true,
           emailVerified: true,
           createdAt: true,
+          accessMoajam: true,
+          accessKids: true,
+          parentEmail: true,
         },
       });
 

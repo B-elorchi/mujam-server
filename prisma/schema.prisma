@@ -96,6 +96,12 @@ enum PracticeInvitationStatus {
   DECLINED
 }
 
+enum InviteAccess {
+  MOAJAM
+  KIDS
+  BOTH
+}
+
 // ─────────────────────────────────────────
 // USERS & AUTH
 // ─────────────────────────────────────────
@@ -112,6 +118,12 @@ model User {
   placementScore    Int              @default(0)
   isActive          Boolean          @default(true)
   emailVerified     Boolean          @default(false)
+  /// Adult Moajam learning platform access (existing users default true)
+  accessMoajam      Boolean          @default(true)
+  /// Moajam Kids space access
+  accessKids        Boolean          @default(false)
+  /// Optional parent email (when kids access) — parent account with this email can view progress
+  parentEmail       String?
   lastActiveAt      DateTime         @default(now())
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
@@ -146,6 +158,7 @@ model User {
   @@index([email])
   @@index([plan])
   @@index([lastActiveAt])
+  @@index([parentEmail])
 }
 
 model RefreshToken {
@@ -184,15 +197,17 @@ model PasswordReset {
 // ─────────────────────────────────────────
 
 model UserInvitation {
-  id          String    @id @default(uuid())
+  id          String       @id @default(uuid())
   email       String
-  tokenHash   String    @unique // sha256 of single-use invite token (never store raw token)
+  tokenHash   String       @unique // sha256 of single-use invite token (never store raw token)
+  access      InviteAccess @default(MOAJAM)
+  parentEmail String? // optional when access includes KIDS — parent can view child progress
   expiresAt   DateTime
   usedAt      DateTime?
   revokedAt   DateTime?
   invitedById String
-  createdAt   DateTime  @default(now())
-  invitedBy   User      @relation("UserInvitationsCreated", fields: [invitedById], references: [id])
+  createdAt   DateTime     @default(now())
+  invitedBy   User         @relation("UserInvitationsCreated", fields: [invitedById], references: [id])
 
   @@index([email])
   @@index([expiresAt])

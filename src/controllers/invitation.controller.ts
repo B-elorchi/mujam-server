@@ -2,13 +2,14 @@ import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
-import { sendInvitationEmail } from '../config/email';
+import { sendInvitationEmail, sendParentProgressInviteEmail } from '../config/email';
 import {
   createUserInvitation,
   findInvitationByRawToken,
   getInvitationStatus,
   invitationErrorMessage,
   normalizeInviteEmail,
+  parseInviteAccess,
   publicInvitationView,
 } from '../services/invitation.service';
 
@@ -27,23 +28,55 @@ export const invitationController = {
       }
 
       const email = normalizeInviteEmail(req.body.email);
+      const access = parseInviteAccess(req.body.access);
+      if (!access) {
+        return errorResponse(res, 'access must be MOAJAM, KIDS, or BOTH', 400);
+      }
+
+      const includesKids = access === 'KIDS' || access === 'BOTH';
+      const parentEmailRaw =
+        typeof req.body.parentEmail === 'string' ? req.body.parentEmail.trim() : '';
+      if (parentEmailRaw && !includesKids) {
+        return errorResponse(res, 'parentEmail is only allowed when access includes KIDS', 400);
+      }
+
       const invitedById = req.userId!;
 
       let result;
       try {
-        result = await createUserInvitation(email, invitedById);
+        result = await createUserInvitation({
+          email,
+          invitedById,
+          access,
+          parentEmail: parentEmailRaw || null,
+        });
       } catch (e: any) {
         if (e?.code === 'EMAIL_ALREADY_REGISTERED' || e?.message === 'EMAIL_ALREADY_REGISTERED') {
           return errorResponse(res, 'A user with this email already exists', 409);
+        }
+        if (e?.code === 'PARENT_EMAIL_SAME_AS_LEARNER') {
+          return errorResponse(res, 'Parent email must differ from the learner email', 400);
         }
         throw e;
       }
 
       try {
-        await sendInvitationEmail(email, result.invitationLink, result.invitation.expiresAt);
+        await sendInvitationEmail(
+          email,
+          result.invitationLink,
+          result.invitation.expiresAt,
+          access
+        );
       } catch (emailError) {
         console.error('Invitation email failed:', emailError);
-        // Invitation exists; admin can still copy the link
+      }
+
+      if (result.invitation.parentEmail) {
+        try {
+          await sendParentProgressInviteEmail(result.invitation.parentEmail, email);
+        } catch (parentErr) {
+          console.error('Parent invite email failed:', parentErr);
+        }
       }
 
       return successResponse(
@@ -51,9 +84,10 @@ export const invitationController = {
         {
           id: result.invitation.id,
           email: result.invitation.email,
+          access: result.invitation.access,
+          parentEmail: result.invitation.parentEmail,
           expiresAt: result.invitation.expiresAt,
           invitationLink: result.invitationLink,
-          // raw token only in link; not returned separately to reduce accidental logging
         },
         'Invitation created'
       );
@@ -72,6 +106,8 @@ export const invitationController = {
         select: {
           id: true,
           email: true,
+          access: true,
+          parentEmail: true,
           expiresAt: true,
           usedAt: true,
           revokedAt: true,
@@ -83,6 +119,8 @@ export const invitationController = {
       const data = items.map((i) => ({
         id: i.id,
         email: i.email,
+        access: i.access,
+        parentEmail: i.parentEmail,
         expiresAt: i.expiresAt,
         usedAt: i.usedAt,
         revokedAt: i.revokedAt,

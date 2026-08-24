@@ -1,3 +1,4 @@
+import { InviteAccess } from '@prisma/client';
 import prisma from '../config/database';
 import { generateSecureToken, hashToken } from '../utils/hash';
 
@@ -11,8 +12,30 @@ export type InvitationStatusError =
   | 'REVOKED'
   | 'EMAIL_MISMATCH';
 
+export type InviteAccessValue = 'MOAJAM' | 'KIDS' | 'BOTH';
+
 export function normalizeInviteEmail(email: string): string {
   return email.trim().toLowerCase();
+}
+
+export function parseInviteAccess(raw: unknown): InviteAccessValue | null {
+  if (raw === 'MOAJAM' || raw === 'KIDS' || raw === 'BOTH') return raw;
+  return null;
+}
+
+export function accessFlagsFromInvite(access: InviteAccessValue): {
+  accessMoajam: boolean;
+  accessKids: boolean;
+} {
+  switch (access) {
+    case 'KIDS':
+      return { accessMoajam: false, accessKids: true };
+    case 'BOTH':
+      return { accessMoajam: true, accessKids: true };
+    case 'MOAJAM':
+    default:
+      return { accessMoajam: true, accessKids: false };
+  }
 }
 
 export function invitationErrorMessage(code: InvitationStatusError): string {
@@ -37,6 +60,8 @@ export function invitationErrorMessage(code: InvitationStatusError): string {
 type InvitationRow = {
   id: string;
   email: string;
+  access: InviteAccessValue | InviteAccess;
+  parentEmail: string | null;
   expiresAt: Date;
   usedAt: Date | null;
   revokedAt: Date | null;
@@ -76,12 +101,32 @@ export async function findInvitationByRawToken(rawToken: string) {
   return prisma.userInvitation.findUnique({ where: { tokenHash } });
 }
 
+export type CreateInvitationInput = {
+  email: string;
+  invitedById: string;
+  access: InviteAccessValue;
+  parentEmail?: string | null;
+};
+
 /**
  * Create a learner invitation. Revokes previous unused invites for the same email.
  * Returns the raw token once (for email / admin copy) — never persisted.
  */
-export async function createUserInvitation(email: string, invitedById: string) {
-  const normalized = normalizeInviteEmail(email);
+export async function createUserInvitation(input: CreateInvitationInput) {
+  const normalized = normalizeInviteEmail(input.email);
+  const access = input.access;
+  const includesKids = access === 'KIDS' || access === 'BOTH';
+
+  let parentEmail: string | null = null;
+  if (includesKids && input.parentEmail) {
+    parentEmail = normalizeInviteEmail(input.parentEmail);
+    if (parentEmail === normalized) {
+      const err = new Error('PARENT_EMAIL_SAME_AS_LEARNER') as Error & { code: string };
+      err.code = 'PARENT_EMAIL_SAME_AS_LEARNER';
+      throw err;
+    }
+  }
+
   const rawToken = generateSecureToken(32);
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date();
@@ -110,8 +155,10 @@ export async function createUserInvitation(email: string, invitedById: string) {
     data: {
       email: normalized,
       tokenHash,
+      access,
+      parentEmail,
       expiresAt,
-      invitedById,
+      invitedById: input.invitedById,
     },
   });
 
@@ -128,6 +175,8 @@ export async function createUserInvitation(email: string, invitedById: string) {
 export function publicInvitationView(invitation: InvitationRow) {
   return {
     email: invitation.email,
+    access: invitation.access,
+    parentEmail: invitation.parentEmail,
     expiresAt: invitation.expiresAt.toISOString(),
   };
 }

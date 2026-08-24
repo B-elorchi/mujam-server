@@ -1,4 +1,5 @@
 import {
+  accessFlagsFromInvite,
   getInvitationStatus,
   invitationErrorMessage,
   normalizeInviteEmail,
@@ -9,6 +10,8 @@ describe('Invitation security helpers', () => {
   const base = {
     id: 'inv-1',
     email: 'learner@example.com',
+    access: 'MOAJAM' as const,
+    parentEmail: null as string | null,
     expiresAt: new Date(Date.now() + 60_000),
     usedAt: null as Date | null,
     revokedAt: null as Date | null,
@@ -77,5 +80,11 @@ describe('Invitation security helpers', () => {
     expect(a).toBe(b);
     expect(a).not.toBe(raw);
     expect(a).toHaveLength(64);
+  });
+
+  it('maps invite access to user flags', () => {
+    expect(accessFlagsFromInvite('MOAJAM')).toEqual({ accessMoajam: true, accessKids: false });
+    expect(accessFlagsFromInvite('KIDS')).toEqual({ accessMoajam: false, accessKids: true });
+    expect(accessFlagsFromInvite('BOTH')).toEqual({ accessMoajam: true, accessKids: true });
   });
 });

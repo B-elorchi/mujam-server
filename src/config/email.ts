@@ -191,12 +191,23 @@ export const sendTrialExpiryWarning = async (email: string, name: string, daysLe
   });
 };
 
-export const sendInvitationEmail = async (email: string, invitationLink: string, expiresAt: Date) => {
+export const sendInvitationEmail = async (
+  email: string,
+  invitationLink: string,
+  expiresAt: Date,
+  access: 'MOAJAM' | 'KIDS' | 'BOTH' = 'MOAJAM'
+) => {
   const expiresLabel = expiresAt.toLocaleDateString('ar-MA', {
     year: 'numeric',
     month: 'long',
     day: 'numeric',
   });
+  const accessLabel =
+    access === 'KIDS'
+      ? 'معجم الصغار'
+      : access === 'BOTH'
+        ? 'معجم + معجم الصغار'
+        : 'منصة معجم';
   const html = `
     <!DOCTYPE html>
     <html dir="rtl" lang="ar">
@@ -207,7 +218,7 @@ export const sendInvitationEmail = async (email: string, invitationLink: string,
     <body style="font-family: Tahoma, Arial, sans-serif; background: #f5f5f5; padding: 20px;">
       <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.1);">
         <h2 style="color: #2563eb; text-align: center;">دعوة للانضمام إلى معجَم</h2>
-        <p style="color: #333; font-size: 16px;">تمت دعوتك لإنشاء حساب على منصة معجَم لتعلّم الإنجليزية.</p>
+        <p style="color: #333; font-size: 16px;">تمت دعوتك لإنشاء حساب على: <strong>${accessLabel}</strong>.</p>
         <p style="color: #333; font-size: 14px;">اضغط الزر أدناه لإكمال التسجيل باستخدام هذا البريد: <strong dir="ltr">${email}</strong></p>
         <div style="text-align: center; margin: 28px 0;">
           <a href="${invitationLink}" style="display: inline-block; background: #2563eb; color: white; padding: 14px 28px; border-radius: 8px; text-decoration: none; font-weight: bold;">إنشاء حسابي</a>
@@ -225,3 +236,38 @@ export const sendInvitationEmail = async (email: string, invitationLink: string,
     html,
   });
 };
+
+/** Notify parent that they can view a child's Kids progress after login. */
+export const sendParentProgressInviteEmail = async (
+  parentEmail: string,
+  childEmail: string,
+  childName?: string
+) => {
+  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
+  const parentLink = `${frontendUrl}/kids/parent`;
+  const loginLink = `${frontendUrl}/login`;
+  const label = childName || childEmail;
+  const html = `
+    <!DOCTYPE html>
+    <html dir="rtl" lang="ar">
+    <head><meta charset="UTF-8"><title>متابعة تقدّم طفلك — معجَم</title></head>
+    <body style="font-family: Tahoma, Arial, sans-serif; background: #f5f5f5; padding: 20px;">
+      <div style="max-width: 500px; margin: 0 auto; background: white; border-radius: 12px; padding: 30px;">
+        <h2 style="color: #2563eb; text-align: center;">متابعة تقدّم طفلك</h2>
+        <p style="color: #333; font-size: 15px;">تم ربط بريدك كوليّ أمر لحساب الطفل المرتبط بـ <strong dir="ltr">${label}</strong> في معجم الصغار.</p>
+        <p style="color: #333; font-size: 14px;">سجّل الدخول بنفس هذا البريد (أو أنشئ حساباً بدعوة إن لزم) ثم افتح لوحة الوالدين لعرض التقدّم.</p>
+        <div style="text-align: center; margin: 24px 0;">
+          <a href="${loginLink}" style="display: inline-block; background: #2563eb; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none;">تسجيل الدخول</a>
+        </div>
+        <p style="color: #666; font-size: 13px; word-break: break-all;">لوحة الوالدين: ${parentLink}</p>
+      </div>
+    </body>
+    </html>
+  `;
+  await sendEmail({
+    to: parentEmail,
+    subject: 'متابعة تقدّم طفلك على معجم الصغار',
+    html,
+  });
+};
+
