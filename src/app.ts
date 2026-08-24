@@ -24,6 +24,7 @@ import blogRoutes from './routes/blog.routes';
 import subscriptionRoutes from './routes/subscription.routes';
 import adminRoutes from './routes/admin/admin.routes';
 import communityRoutes from './routes/community.routes';
+import engagementRoutes from './routes/engagement.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 /**
@@ -76,6 +77,7 @@ export function buildApp(): Application {
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
+  app.use('/api/users', engagementRoutes);
   app.use('/api/levels', levelRoutes);
   app.use('/api/games', gameRoutes);
   app.use('/api/quiz', quizRoutes);

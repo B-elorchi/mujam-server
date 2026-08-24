@@ -137,6 +137,10 @@ model User {
   communityMessages            CommunityMessage[]
   sentPracticeInvitations      PracticeInvitation[] @relation("SentInvitations")
   receivedPracticeInvitations  PracticeInvitation[] @relation("ReceivedInvitations")
+  dailyPathProgress            DailyPathProgress[]
+  weeklyChallengeProgress      WeeklyChallengeProgress[]
+  loginEvents                  LoginEvent[]
+  sessions                     UserSession[]
 
   @@index([email])
   @@index([plan])
@@ -538,6 +542,79 @@ model UserStreak {
   totalStudyDays  Int      @default(0)
   updatedAt       DateTime @updatedAt
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// ─────────────────────────────────────────
+// DAILY PATH & WEEKLY SPEAKING CHALLENGE
+// ─────────────────────────────────────────
+
+model DailyPathProgress {
+  id             String   @id @default(uuid())
+  userId         String
+  date           String   // YYYY-MM-DD (UTC)
+  levelId        Int
+  sentenceIds    Json     // string[]
+  gameId         String?
+  storyId        String?
+  scenarioId     String?
+  aiPromptEn     String?
+  sentencesDone  Boolean  @default(false)
+  gameDone       Boolean  @default(false)
+  shadowingDone  Boolean  @default(false)
+  aiDone         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model WeeklyChallengeProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  weekKey     String   // e.g. 2026-W35
+  challengeId String
+  attempted   Boolean  @default(false)
+  completed   Boolean  @default(false)
+  score       Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekKey])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// PLATFORM ENGAGEMENT (logins + sessions)
+// ─────────────────────────────────────────
+
+model LoginEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// Approximate presence window. Extended via heartbeat while the tab is open.
+/// A gap > SESSION_GAP_MS starts a new session.
+model UserSession {
+  id         String    @id @default(uuid())
+  userId     String
+  startedAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([startedAt])
+  @@index([lastSeenAt])
+  @@index([userId, lastSeenAt])
 }
 
 model Achievement {

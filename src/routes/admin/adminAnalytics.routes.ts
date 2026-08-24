@@ -15,5 +15,6 @@ router.get('/analytics/funnel', adminAnalyticsController.getFunnel);
 router.get('/analytics/activity-heatmap', adminAnalyticsController.getActivityHeatmap);
 router.get('/analytics/content', adminAnalyticsController.getContent);
 router.get('/analytics/ai-cost', adminAnalyticsController.getAICost);
+router.get('/analytics/engagement', adminAnalyticsController.getEngagement);
 
 export default router;

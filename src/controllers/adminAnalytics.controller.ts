@@ -1,8 +1,20 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
+import { getEngagementAnalytics } from '../services/sessionTracking.service';
 
 export const adminAnalyticsController = {
+  getEngagement: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const days = parseInt(req.query.days as string, 10) || 30;
+      const data = await getEngagementAnalytics(days);
+      return successResponse(res, data);
+    } catch (error) {
+      console.error('Get engagement analytics error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
   getOverview: async (req: Request, res: Response): Promise<Response> => {
     try {
       const totalUsers = await prisma.user.count();

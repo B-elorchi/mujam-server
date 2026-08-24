@@ -5,6 +5,7 @@ import { hashPassword, verifyPassword, generateRandomCode, generateRandomToken }
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { sendVerificationEmail, sendPasswordResetEmail, sendWelcomeEmail } from '../config/email';
+import { recordLogin } from '../services/sessionTracking.service';
 
 export const authController = {
   register: async (req: Request, res: Response): Promise<Response> => {
@@ -110,10 +111,7 @@ export const authController = {
         return errorResponse(res, 'Invalid credentials', 401);
       }
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastActiveAt: new Date() },
-      });
+      await recordLogin(user.id);
 
       const tokenPayload = { userId: user.id, email: user.email, role: user.role };
       const accessToken = generateAccessToken(tokenPayload);
