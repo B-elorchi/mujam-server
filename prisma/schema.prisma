@@ -675,6 +675,24 @@ model BroadcastMessage {
 }
 
 // ─────────────────────────────────────────
+// NEWS BANNER (learner top strip)
+// ─────────────────────────────────────────
+
+model NewsBanner {
+  id         String   @id @default(uuid())
+  messageAr  String
+  linkUrl    String?
+  isActive   Boolean  @default(true)
+  orderIndex Int      @default(0)
+  bgColor    String?  // e.g. #DC2626; null = default red
+  textColor  String?  // e.g. #FFFFFF; null = white
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, orderIndex])
+}
+
+// ─────────────────────────────────────────
 // BLOG
 // ─────────────────────────────────────────
 

@@ -25,6 +25,7 @@ import subscriptionRoutes from './routes/subscription.routes';
 import adminRoutes from './routes/admin/admin.routes';
 import communityRoutes from './routes/community.routes';
 import engagementRoutes from './routes/engagement.routes';
+import newsBannerRoutes from './routes/newsBanner.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 /**
@@ -92,6 +93,7 @@ export function buildApp(): Application {
   app.use('/api/blog', blogRoutes);
   app.use('/api/subscription', subscriptionRoutes);
   app.use('/api/community', communityRoutes);
+  app.use('/api/news-banners', newsBannerRoutes);
   app.use('/api/admin', adminRoutes);
 
   app.get('/health', (_req, res) => {
