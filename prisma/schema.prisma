@@ -96,6 +96,12 @@ enum PracticeInvitationStatus {
   DECLINED
 }
 
+enum InviteAccess {
+  MOAJAM
+  KIDS
+  BOTH
+}
+
 // ─────────────────────────────────────────
 // USERS & AUTH
 // ─────────────────────────────────────────
@@ -112,6 +118,12 @@ model User {
   placementScore    Int              @default(0)
   isActive          Boolean          @default(true)
   emailVerified     Boolean          @default(false)
+  /// Adult Moajam learning platform access (existing users default true)
+  accessMoajam      Boolean          @default(true)
+  /// Moajam Kids space access
+  accessKids        Boolean          @default(false)
+  /// Optional parent email (when kids access) — parent account with this email can view progress
+  parentEmail       String?
   lastActiveAt      DateTime         @default(now())
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
@@ -137,10 +149,16 @@ model User {
   communityMessages            CommunityMessage[]
   sentPracticeInvitations      PracticeInvitation[] @relation("SentInvitations")
   receivedPracticeInvitations  PracticeInvitation[] @relation("ReceivedInvitations")
+  dailyPathProgress            DailyPathProgress[]
+  weeklyChallengeProgress      WeeklyChallengeProgress[]
+  loginEvents                  LoginEvent[]
+  sessions                     UserSession[]
+  invitationsCreated           UserInvitation[] @relation("UserInvitationsCreated")
 
   @@index([email])
   @@index([plan])
   @@index([lastActiveAt])
+  @@index([parentEmail])
 }
 
 model RefreshToken {
@@ -172,6 +190,27 @@ model PasswordReset {
   expiresAt DateTime
   used      Boolean  @default(false)
   createdAt DateTime @default(now())
+}
+
+// ─────────────────────────────────────────
+// USER INVITATIONS (invite-only registration)
+// ─────────────────────────────────────────
+
+model UserInvitation {
+  id          String       @id @default(uuid())
+  email       String
+  tokenHash   String       @unique // sha256 of single-use invite token (never store raw token)
+  access      InviteAccess @default(MOAJAM)
+  parentEmail String? // optional when access includes KIDS — parent can view child progress
+  expiresAt   DateTime
+  usedAt      DateTime?
+  revokedAt   DateTime?
+  invitedById String
+  createdAt   DateTime     @default(now())
+  invitedBy   User         @relation("UserInvitationsCreated", fields: [invitedById], references: [id])
+
+  @@index([email])
+  @@index([expiresAt])
 }
 
 // ─────────────────────────────────────────
@@ -540,6 +579,79 @@ model UserStreak {
   user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// ─────────────────────────────────────────
+// DAILY PATH & WEEKLY SPEAKING CHALLENGE
+// ─────────────────────────────────────────
+
+model DailyPathProgress {
+  id             String   @id @default(uuid())
+  userId         String
+  date           String   // YYYY-MM-DD (UTC)
+  levelId        Int
+  sentenceIds    Json     // string[]
+  gameId         String?
+  storyId        String?
+  scenarioId     String?
+  aiPromptEn     String?
+  sentencesDone  Boolean  @default(false)
+  gameDone       Boolean  @default(false)
+  shadowingDone  Boolean  @default(false)
+  aiDone         Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, date])
+  @@index([userId])
+}
+
+model WeeklyChallengeProgress {
+  id          String   @id @default(uuid())
+  userId      String
+  weekKey     String   // e.g. 2026-W35
+  challengeId String
+  attempted   Boolean  @default(false)
+  completed   Boolean  @default(false)
+  score       Int?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, weekKey])
+  @@index([userId])
+}
+
+// ─────────────────────────────────────────
+// PLATFORM ENGAGEMENT (logins + sessions)
+// ─────────────────────────────────────────
+
+model LoginEvent {
+  id        String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+/// Approximate presence window. Extended via heartbeat while the tab is open.
+/// A gap > SESSION_GAP_MS starts a new session.
+model UserSession {
+  id         String    @id @default(uuid())
+  userId     String
+  startedAt  DateTime  @default(now())
+  lastSeenAt DateTime  @default(now())
+  endedAt    DateTime?
+  createdAt  DateTime  @default(now())
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([startedAt])
+  @@index([lastSeenAt])
+  @@index([userId, lastSeenAt])
+}
+
 model Achievement {
   id          String   @id @default(uuid())
   key         String   @unique
@@ -595,6 +707,57 @@ model BroadcastMessage {
   sentAt        DateTime?
   createdBy     String
   createdAt     DateTime         @default(now())
+}
+
+// ─────────────────────────────────────────
+// NEWS BANNER (learner top strip)
+// ─────────────────────────────────────────
+
+model NewsBanner {
+  id         String   @id @default(uuid())
+  messageAr  String
+  linkUrl    String?
+  isActive   Boolean  @default(true)
+  orderIndex Int      @default(0)
+  bgColor    String?  // e.g. #DC2626; null = default red
+  textColor  String?  // e.g. #FFFFFF; null = white
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([isActive, orderIndex])
+}
+
+// ─────────────────────────────────────────
+// KIDS COURSES (Moajam Kids modules + lessons)
+// ─────────────────────────────────────────
+
+model KidsModule {
+  id         String             @id // e.g. "alphabet", "numbers"
+  titleEn    String
+  titleAr    String
+  icon       String             // emoji key for UI
+  color      String             // blue|sky|yellow|pink|green|purple|orange
+  orderIndex Int                @unique
+  isActive   Boolean            @default(true)
+  progress   Int                @default(0) // 0-100 default display until per-child progress
+  stars      Int                @default(0) // 0-3 default display
+  createdAt  DateTime           @default(now())
+  updatedAt  DateTime           @updatedAt
+  screens    KidsLessonScreen[]
+
+  @@index([isActive, orderIndex])
+}
+
+model KidsLessonScreen {
+  id         String     @id @default(uuid())
+  moduleId   String
+  type       String     // flashcard|grid|matching|choice|complete
+  orderIndex Int
+  payload    Json       // screen fields matching frontend LessonScreen (minus type)
+  module     KidsModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([moduleId, orderIndex])
+  @@index([moduleId])
 }
 
 // ─────────────────────────────────────────

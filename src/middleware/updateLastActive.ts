@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import prisma from '../config/database';
+import { touchSession } from '../services/sessionTracking.service';
 
+/** Lightweight presence: extends session + lastActiveAt (fire-and-forget safe). */
 export const updateLastActive = async (
   req: Request,
   res: Response,
@@ -8,10 +9,7 @@ export const updateLastActive = async (
 ): Promise<void> => {
   try {
     if (req.userId) {
-      await prisma.user.update({
-        where: { id: req.userId },
-        data: { lastActiveAt: new Date() },
-      });
+      await touchSession(req.userId);
     }
     next();
   } catch (error) {

@@ -24,6 +24,9 @@ import blogRoutes from './routes/blog.routes';
 import subscriptionRoutes from './routes/subscription.routes';
 import adminRoutes from './routes/admin/admin.routes';
 import communityRoutes from './routes/community.routes';
+import engagementRoutes from './routes/engagement.routes';
+import newsBannerRoutes from './routes/newsBanner.routes';
+import kidsRoutes from './routes/kids.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 
 /**
@@ -57,12 +60,26 @@ export function buildApp(): Application {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
-  const openapiPath = path.join(__dirname, 'openapi.yaml');
-  const openapiSpec = YAML.parse(fs.readFileSync(openapiPath, 'utf8'));
-  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+  const openapiCandidates = [
+    path.join(__dirname, 'openapi.yaml'),
+    path.join(process.cwd(), 'dist', 'openapi.yaml'),
+    path.join(process.cwd(), 'src', 'openapi.yaml'),
+    path.join(process.cwd(), 'openapi.yaml'),
+  ];
+  const openapiPath = openapiCandidates.find((p) => fs.existsSync(p));
+  if (openapiPath) {
+    const openapiSpec = YAML.parse(fs.readFileSync(openapiPath, 'utf8'));
+    app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
+  } else {
+    console.warn(
+      'openapi.yaml not found — /api-docs disabled. Looked in:',
+      openapiCandidates.join(', ')
+    );
+  }
 
   app.use('/api/auth', authRoutes);
   app.use('/api/users', userRoutes);
+  app.use('/api/users', engagementRoutes);
   app.use('/api/levels', levelRoutes);
   app.use('/api/games', gameRoutes);
   app.use('/api/quiz', quizRoutes);
@@ -77,6 +94,8 @@ export function buildApp(): Application {
   app.use('/api/blog', blogRoutes);
   app.use('/api/subscription', subscriptionRoutes);
   app.use('/api/community', communityRoutes);
+  app.use('/api/news-banners', newsBannerRoutes);
+  app.use('/api/kids', kidsRoutes);
   app.use('/api/admin', adminRoutes);
 
   app.get('/health', (_req, res) => {

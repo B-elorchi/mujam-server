@@ -1,7 +1,7 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
-import { sendEmail } from '../config/email';
+import { broadcastEmailHtml, sendEmail } from '../config/email';
 
 export const adminBroadcastController = {
   getTargetUsers: async (target: string, targetConfig: any): Promise<{ id: string; email: string; name: string }[]> => {
@@ -82,7 +82,7 @@ export const adminBroadcastController = {
             await sendEmail({
               to: user.email,
               subject: title,
-              html: `<p>${body}</p>`,
+              html: broadcastEmailHtml(title, body, actionUrl),
             });
           } catch (e) {
             console.error('Email send failed:', e);

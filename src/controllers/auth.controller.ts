@@ -5,6 +5,15 @@ import { hashPassword, verifyPassword, generateRandomCode, generateRandomToken }
 import { generateAccessToken, generateRefreshToken } from '../utils/jwt';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { sendVerificationEmail, sendPasswordResetEmail, sendWelcomeEmail } from '../config/email';
+import { recordLogin } from '../services/sessionTracking.service';
+import {
+  accessFlagsFromInvite,
+  findInvitationByRawToken,
+  getInvitationStatus,
+  invitationErrorMessage,
+  normalizeInviteEmail,
+} from '../services/invitation.service';
+import { sendParentProgressInviteEmail } from '../config/email';
 
 export const authController = {
   register: async (req: Request, res: Response): Promise<Response> => {
@@ -14,51 +23,100 @@ export const authController = {
         return errorResponse(res, errors.array()[0].msg, 400);
       }
 
-      const { name, email, password, currentLevel, placementScore } = req.body;
+      const { name, email, password, currentLevel, placementScore, invitationToken } = req.body;
 
-      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (!invitationToken || typeof invitationToken !== 'string') {
+        return errorResponse(res, invitationErrorMessage('MISSING_TOKEN'), 400);
+      }
+
+      const invitation = await findInvitationByRawToken(invitationToken);
+      const inviteStatus = getInvitationStatus(invitation, new Date(), email);
+      if (inviteStatus.ok === false) {
+        return errorResponse(res, invitationErrorMessage(inviteStatus.code), 400);
+      }
+
+      // Authoritative email from invitation (request email must match; we persist invite email)
+      const registeredEmail = normalizeInviteEmail(inviteStatus.invitation.email);
+
+      const existingUser = await prisma.user.findUnique({ where: { email: registeredEmail } });
       if (existingUser) {
         return errorResponse(res, 'Email already registered', 400);
       }
 
       const passwordHash = await hashPassword(password);
       const verificationCode = generateRandomCode(6);
+      const flags = accessFlagsFromInvite(inviteStatus.invitation.access as 'MOAJAM' | 'KIDS' | 'BOTH');
+      const parentEmail = inviteStatus.invitation.parentEmail
+        ? normalizeInviteEmail(inviteStatus.invitation.parentEmail)
+        : null;
 
-      const user = await prisma.user.create({
-        data: {
-          name,
-          email,
-          passwordHash,
-          role: 'STUDENT',
-          plan: 'FREE',
-          currentLevel: currentLevel || 0,
-          placementScore: placementScore || 0,
-        },
-      });
-
-      await prisma.emailVerification.create({
-        data: {
-          email,
-          code: verificationCode,
-          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-        },
-      });
-
+      let user;
       try {
-        await sendVerificationEmail(email, verificationCode);
-      } catch (emailError) {
-        console.error('Email sending failed during registration:', emailError);
-        // We still created the user, but they can't verify yet. 
-        // Or we could delete the user and return 500. 
-        // Given the current flow, it's better to tell the user that registration worked but email failed.
-        // However, the frontend expects a successful user object or an error.
-        // Let's return a 500 but with a specific message so the user knows what happened.
-        return errorResponse(res, 'Registration successful, but failed to send verification email. Please try resending it from login.', 500);
+        user = await prisma.$transaction(async (tx) => {
+          const fresh = await tx.userInvitation.findUnique({
+            where: { id: inviteStatus.invitation.id },
+          });
+          const again = getInvitationStatus(fresh, new Date(), registeredEmail);
+          if (again.ok === false) {
+            const err = new Error(again.code) as Error & { inviteCode: string };
+            err.inviteCode = again.code;
+            throw err;
+          }
+
+          const created = await tx.user.create({
+            data: {
+              name,
+              email: registeredEmail,
+              passwordHash,
+              role: 'STUDENT',
+              plan: 'FREE',
+              currentLevel: currentLevel || 0,
+              placementScore: placementScore || 0,
+              accessMoajam: flags.accessMoajam,
+              accessKids: flags.accessKids,
+              parentEmail: flags.accessKids ? parentEmail : null,
+            },
+          });
+
+          await tx.userInvitation.update({
+            where: { id: inviteStatus.invitation.id },
+            data: { usedAt: new Date() },
+          });
+
+          await tx.emailVerification.create({
+            data: {
+              email: registeredEmail,
+              code: verificationCode,
+              expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+            },
+          });
+
+          await tx.userStreak.create({
+            data: { userId: created.id },
+          });
+
+          return created;
+        });
+      } catch (txError: any) {
+        if (txError?.inviteCode) {
+          return errorResponse(res, invitationErrorMessage(txError.inviteCode), 400);
+        }
+        throw txError;
       }
 
-      await prisma.userStreak.create({
-        data: { userId: user.id },
-      });
+      try {
+        await sendVerificationEmail(registeredEmail, verificationCode);
+      } catch (emailError) {
+        console.error('Email sending failed during registration:', emailError);
+      }
+
+      if (user.parentEmail) {
+        try {
+          await sendParentProgressInviteEmail(user.parentEmail, registeredEmail, user.name);
+        } catch (parentErr) {
+          console.error('Parent progress email failed:', parentErr);
+        }
+      }
 
       const tokenPayload = { userId: user.id, email: user.email, role: user.role };
       const accessToken = generateAccessToken(tokenPayload);
@@ -75,7 +133,16 @@ export const authController = {
       return successResponse(
         res,
         {
-          user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role },
+          user: {
+            id: user.id,
+            name: user.name,
+            email: user.email,
+            plan: user.plan,
+            role: user.role,
+            accessMoajam: user.accessMoajam,
+            accessKids: user.accessKids,
+            parentEmail: user.parentEmail,
+          },
           accessToken,
           refreshToken,
         },
@@ -110,10 +177,7 @@ export const authController = {
         return errorResponse(res, 'Invalid credentials', 401);
       }
 
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { lastActiveAt: new Date() },
-      });
+      await recordLogin(user.id);
 
       const tokenPayload = { userId: user.id, email: user.email, role: user.role };
       const accessToken = generateAccessToken(tokenPayload);
@@ -139,6 +203,9 @@ export const authController = {
             plan: user.plan,
             currentLevel: user.currentLevel,
             emailVerified: user.emailVerified,
+            accessMoajam: user.accessMoajam,
+            accessKids: user.accessKids,
+            parentEmail: user.parentEmail,
           },
           accessToken,
           refreshToken,
@@ -445,6 +512,9 @@ export const authController = {
           currentLevel: true,
           emailVerified: true,
           createdAt: true,
+          accessMoajam: true,
+          accessKids: true,
+          parentEmail: true,
         },
       });
 

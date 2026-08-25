@@ -50,12 +50,14 @@ export const quizController = {
       });
 
       const quizAny = quiz as any;
-      const questionsWithoutAnswers = quizAny.questions.map((q: any) => ({
+      // Include correctAnswer so the client can reveal it after an incorrect attempt.
+      const questionsForClient = quizAny.questions.map((q: any) => ({
         id: q.id,
         questionData: q.questionData,
         type: q.type,
         points: q.points,
         orderIndex: q.orderIndex,
+        correctAnswer: q.correctAnswer,
       }));
 
       return successResponse(res, {
@@ -65,7 +67,7 @@ export const quizController = {
         maxAttempts: quiz.maxAttempts,
         timeLimit: quiz.timeLimit,
         attemptsLeft: quiz.maxAttempts - attemptCount,
-        questions: questionsWithoutAnswers,
+        questions: questionsForClient,
       });
     } catch (error) {
       console.error('Get quiz error:', error);

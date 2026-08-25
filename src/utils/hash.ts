@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import crypto from 'crypto';
 
 const SALT_ROUNDS = 12;
 
@@ -26,4 +27,14 @@ export const generateRandomToken = (length: number = 32): string => {
     token += chars[Math.floor(Math.random() * chars.length)];
   }
   return token;
+};
+
+/** Cryptographically strong invite token (URL-safe). */
+export const generateSecureToken = (bytes: number = 32): string => {
+  return crypto.randomBytes(bytes).toString('base64url');
+};
+
+/** One-way hash for storing invite tokens at rest. */
+export const hashToken = (token: string): string => {
+  return crypto.createHash('sha256').update(token, 'utf8').digest('hex');
 };

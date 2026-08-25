@@ -24,4 +24,4 @@ if [ "${RUN_SEED:-false}" = "true" ]; then
 fi
 
 echo "==> Starting API"
-exec npm start
+exec node dist/server.js

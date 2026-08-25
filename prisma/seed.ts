@@ -4,6 +4,7 @@
 
 import { Prisma, PrismaClient, GameType, UserRole, SubscriptionPlan, Difficulty } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+import { seedKidsCourses } from './seed-kids-courses'
 
 const prisma = new PrismaClient()
 
@@ -20,6 +21,8 @@ async function main() {
   await seedAIScenarios()
   await seedAchievements()
   await seedPlatformSettings()
+  await seedNewsBanners()
+  await seedKidsCourses(prisma)
   await seedCommunityRooms()
   await seedShadowingStories()
   await seedQuizzes()
@@ -881,6 +884,55 @@ async function seedPlatformSettings() {
   })
 
   console.log('  ✓ Platform settings seeded')
+}
+
+// ─────────────────────────────────────────
+// NEWS BANNERS (learner NewsBar via GET /api/news-banners)
+// ─────────────────────────────────────────
+
+async function seedNewsBanners() {
+  console.log('📢 Seeding news banners...')
+
+  const banners = [
+    {
+      id: 'seed-news-daily-path',
+      messageAr: 'جديد: جرّب مسار اليوم · تحدي التحدث الأسبوعي · تقرير الوالدين',
+      linkUrl: '/dashboard#daily-path',
+      isActive: true,
+      orderIndex: 0,
+      bgColor: null as string | null,
+      textColor: null as string | null,
+    },
+    {
+      id: 'seed-news-weekly',
+      messageAr: 'تحدي التحدث الأسبوعي — سجّل محاولتك وارفع مستواك',
+      linkUrl: '/dashboard#weekly-challenge',
+      isActive: true,
+      orderIndex: 1,
+      bgColor: null as string | null,
+      textColor: null as string | null,
+    },
+    {
+      id: 'seed-news-parents',
+      messageAr: 'تقرير الوالدين لمتابعة تقدّم الأطفال',
+      linkUrl: '/kids/parent',
+      isActive: true,
+      orderIndex: 2,
+      bgColor: null as string | null,
+      textColor: null as string | null,
+    },
+  ]
+
+  for (const banner of banners) {
+    await prisma.newsBanner.upsert({
+      where: { id: banner.id },
+      create: banner,
+      // Do not overwrite admin edits after first insert
+      update: {},
+    })
+  }
+
+  console.log(`  ✓ ${banners.length} news banners seeded`)
 }
 
 async function seedCommunityRooms() {

@@ -1,10 +1,14 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { authController } from '../controllers/auth.controller';
+import { invitationController } from '../controllers/invitation.controller';
 import { authMiddleware } from '../middleware/auth';
 import { authLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
+
+/** Preview invite for register form (public, rate-limited) */
+router.get('/invitation', authLimiter, invitationController.preview);
 
 router.post(
   '/register',
@@ -13,6 +17,7 @@ router.post(
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
+    body('invitationToken').trim().notEmpty().withMessage('Invitation token is required'),
   ],
   authController.register
 );
