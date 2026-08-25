@@ -96,11 +96,13 @@ export const gameController = {
       });
 
       const gameAny = game as any;
-      const questionsWithoutAnswers = gameAny.questions.map((q: any) => ({
+      // Include correctAnswer so the client can reveal it after an incorrect attempt.
+      const questionsForClient = gameAny.questions.map((q: any) => ({
         id: q.id,
         questionData: q.questionData,
         type: q.type,
         orderIndex: q.orderIndex,
+        correctAnswer: q.correctAnswer,
       }));
 
       return successResponse(res, {
@@ -108,7 +110,7 @@ export const gameController = {
         levelId: game.levelId,
         type: game.type,
         titleAr: game.titleAr,
-        questions: questionsWithoutAnswers,
+        questions: questionsForClient,
       });
     } catch (error) {
       console.error('Get game error:', error);
