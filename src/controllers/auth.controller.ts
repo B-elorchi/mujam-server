@@ -44,7 +44,6 @@ export const authController = {
       }
 
       const passwordHash = await hashPassword(password);
-      const verificationCode = generateRandomCode(6);
       const flags = accessFlagsFromInvite(inviteStatus.invitation.access as 'MOAJAM' | 'KIDS' | 'BOTH');
       const parentEmail = inviteStatus.invitation.parentEmail
         ? normalizeInviteEmail(inviteStatus.invitation.parentEmail)
@@ -63,6 +62,7 @@ export const authController = {
             throw err;
           }
 
+          // Invite already proves email ownership — mark verified and skip verification email
           const created = await tx.user.create({
             data: {
               name,
@@ -72,6 +72,7 @@ export const authController = {
               plan: 'FREE',
               currentLevel: currentLevel || 0,
               placementScore: placementScore || 0,
+              emailVerified: true,
               accessMoajam: flags.accessMoajam,
               accessKids: flags.accessKids,
               parentEmail: flags.accessKids ? parentEmail : null,
@@ -81,14 +82,6 @@ export const authController = {
           await tx.userInvitation.update({
             where: { id: inviteStatus.invitation.id },
             data: { usedAt: new Date() },
-          });
-
-          await tx.emailVerification.create({
-            data: {
-              email: registeredEmail,
-              code: verificationCode,
-              expiresAt: new Date(Date.now() + 10 * 60 * 1000),
-            },
           });
 
           await tx.userStreak.create({
@@ -102,12 +95,6 @@ export const authController = {
           return errorResponse(res, invitationErrorMessage(txError.inviteCode), 400);
         }
         throw txError;
-      }
-
-      try {
-        await sendVerificationEmail(registeredEmail, verificationCode);
-      } catch (emailError) {
-        console.error('Email sending failed during registration:', emailError);
       }
 
       if (user.parentEmail) {
@@ -139,6 +126,7 @@ export const authController = {
             email: user.email,
             plan: user.plan,
             role: user.role,
+            emailVerified: user.emailVerified,
             accessMoajam: user.accessMoajam,
             accessKids: user.accessKids,
             parentEmail: user.parentEmail,
