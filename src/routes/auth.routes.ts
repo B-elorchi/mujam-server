@@ -10,6 +10,9 @@ const router = Router();
 /** Preview invite for register form (public, rate-limited) */
 router.get('/invitation', authLimiter, invitationController.preview);
 
+/** Whether public (open) signup is enabled — UI CTAs; server env is source of truth */
+router.get('/registration-options', authLimiter, authController.registrationOptions);
+
 router.post(
   '/register',
   authLimiter,
@@ -17,7 +20,8 @@ router.post(
     body('name').trim().notEmpty().withMessage('Name is required'),
     body('email').isEmail().normalizeEmail().withMessage('Valid email is required'),
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
-    body('invitationToken').trim().notEmpty().withMessage('Invitation token is required'),
+    // Optional: required only when ALLOW_PUBLIC_SIGNUP is not enabled (enforced in controller)
+    body('invitationToken').optional({ values: 'falsy' }).isString(),
   ],
   authController.register
 );

@@ -14,8 +14,14 @@ import {
   normalizeInviteEmail,
 } from '../services/invitation.service';
 import { sendParentProgressInviteEmail } from '../config/email';
+import { isPublicSignupAllowed } from '../utils/publicSignup';
 
 export const authController = {
+  /** Public: whether open registration is enabled (for UI CTAs). */
+  registrationOptions: async (_req: Request, res: Response): Promise<Response> => {
+    return successResponse(res, { publicSignup: isPublicSignupAllowed() });
+  },
+
   register: async (req: Request, res: Response): Promise<Response> => {
     try {
       const errors = validationResult(req);
@@ -24,12 +30,96 @@ export const authController = {
       }
 
       const { name, email, password, currentLevel, placementScore, invitationToken } = req.body;
+      const rawInvite =
+        typeof invitationToken === 'string' && invitationToken.trim()
+          ? invitationToken.trim()
+          : '';
 
-      if (!invitationToken || typeof invitationToken !== 'string') {
-        return errorResponse(res, invitationErrorMessage('MISSING_TOKEN'), 400);
+      // ── Public signup (no invite) when ALLOW_PUBLIC_SIGNUP=true ────────────
+      if (!rawInvite) {
+        if (!isPublicSignupAllowed()) {
+          return errorResponse(res, invitationErrorMessage('MISSING_TOKEN'), 400);
+        }
+
+        const registeredEmail = normalizeInviteEmail(email);
+        const existingUser = await prisma.user.findUnique({ where: { email: registeredEmail } });
+        if (existingUser) {
+          return errorResponse(res, 'Email already registered', 400);
+        }
+
+        const passwordHash = await hashPassword(password);
+        const verificationCode = generateRandomCode(6);
+
+        const user = await prisma.$transaction(async (tx) => {
+          const created = await tx.user.create({
+            data: {
+              name,
+              email: registeredEmail,
+              passwordHash,
+              role: 'STUDENT',
+              plan: 'FREE',
+              currentLevel: currentLevel || 0,
+              placementScore: placementScore || 0,
+              emailVerified: false,
+            },
+          });
+
+          await tx.emailVerification.create({
+            data: {
+              email: registeredEmail,
+              code: verificationCode,
+              expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+            },
+          });
+
+          await tx.userStreak.create({
+            data: { userId: created.id },
+          });
+
+          return created;
+        });
+
+        try {
+          await sendVerificationEmail(registeredEmail, verificationCode);
+        } catch (emailError) {
+          console.error('Email sending failed during public registration:', emailError);
+        }
+
+        const tokenPayload = { userId: user.id, email: user.email, role: user.role };
+        const accessToken = generateAccessToken(tokenPayload);
+        const refreshToken = generateRefreshToken(tokenPayload);
+
+        await prisma.refreshToken.create({
+          data: {
+            token: refreshToken,
+            userId: user.id,
+            expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          },
+        });
+
+        return successResponse(
+          res,
+          {
+            user: {
+              id: user.id,
+              name: user.name,
+              email: user.email,
+              plan: user.plan,
+              role: user.role,
+              emailVerified: user.emailVerified,
+              accessMoajam: user.accessMoajam,
+              accessKids: user.accessKids,
+              parentEmail: user.parentEmail,
+            },
+            accessToken,
+            refreshToken,
+          },
+          'Registration successful'
+        );
       }
 
-      const invitation = await findInvitationByRawToken(invitationToken);
+      // ── Invite-only path (default; always available when token present) ───
+      const invitation = await findInvitationByRawToken(rawInvite);
       const inviteStatus = getInvitationStatus(invitation, new Date(), email);
       if (inviteStatus.ok === false) {
         return errorResponse(res, invitationErrorMessage(inviteStatus.code), 400);

@@ -51,7 +51,7 @@ paths:
   # ─── Auth ─────────────────────────────────────────
   /api/auth/register:
     post:
-      summary: Register
+      summary: Register (invite token required unless ALLOW_PUBLIC_SIGNUP=true)
       tags: [Auth]
       requestBody:
         required: true
@@ -64,11 +64,22 @@ paths:
                 name: { type: string }
                 email: { type: string, format: email }
                 password: { type: string, minLength: 8 }
+                invitationToken:
+                  type: string
+                  description: Required when public signup is disabled (default)
       responses:
         '201':
           description: Registered
         '400':
-          description: Validation or email already registered
+          description: Validation, missing invite, or email already registered
+
+  /api/auth/registration-options:
+    get:
+      summary: Public registration options for UI
+      tags: [Auth]
+      responses:
+        '200':
+          description: Returns publicSignup boolean from ALLOW_PUBLIC_SIGNUP
 
   /api/auth/login:
     post:

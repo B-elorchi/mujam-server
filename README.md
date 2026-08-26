@@ -75,7 +75,26 @@ EMAIL_FROM=noreply@mujam.com
 SUPER_ADMIN_EMAIL=admin@mujam.com
 # Long-lived key for n8n / automation (min 24 chars). Rotate by changing + restart.
 INVITE_API_KEY=
+# Temporary open registration (default invite-only). Set true, redeploy/restart; set false later.
+ALLOW_PUBLIC_SIGNUP=false
 ```
+
+### Temporary public sign-up
+
+By default registration is **invite-only**. To open public sign-up for a short window:
+
+1. Set `ALLOW_PUBLIC_SIGNUP=true` in the server environment (Dokploy / `.env`).
+2. Redeploy or restart the API so the process picks up the env var.
+3. Frontend calls `GET /api/auth/registration-options` → `{ publicSignup: true }` and shows Register CTAs / form without an invite token.
+4. When done, set `ALLOW_PUBLIC_SIGNUP=false` (or remove it) and restart again.
+
+Behavior when public signup is on:
+
+- `POST /api/auth/register` accepts `name`, `email`, `password` **without** `invitationToken`
+- Creates the user with `emailVerified: false` and sends a verification email
+- Invite registration (with token) is unchanged: verified immediately, no verification email
+
+When the flag is off (default), register without an invite token is rejected as before.
 
 ### n8n / invite automation API key
 
@@ -123,7 +142,8 @@ curl -X POST "https://YOUR_API_HOST/api/admin/invitations" \
 **Interactive API docs (Swagger UI):** [http://localhost:4000/api-docs](http://localhost:4000/api-docs) — full OpenAPI spec with all routes, request bodies, and **Authorize** for Bearer token.
 
 ### Authentication
-- `POST /api/auth/register` - Register new user
+- `POST /api/auth/register` - Register (invite token required unless `ALLOW_PUBLIC_SIGNUP=true`)
+- `GET /api/auth/registration-options` - `{ publicSignup: boolean }` for UI
 - `POST /api/auth/login` - Login
 - `POST /api/auth/logout` - Logout
 - `POST /api/auth/refresh` - Refresh token
