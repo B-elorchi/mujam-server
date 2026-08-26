@@ -1,4 +1,5 @@
 import rateLimit from 'express-rate-limit';
+import { extractInviteApiKey } from './inviteApiKey';
 
 const isTest = process.env.NODE_ENV === 'test';
 
@@ -24,4 +25,14 @@ export const uploadLimiter = rateLimit({
   message: { success: false, message: 'Too many uploads, please try again later' },
   standardHeaders: true,
   legacyHeaders: false,
+});
+
+/** Rate-limit only automation (API key) traffic on invite admin routes; JWT admin panel is skipped. */
+export const inviteApiKeyLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isTest ? 100_000 : 60,
+  message: { success: false, message: 'Too many invite API key requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skip: (req) => extractInviteApiKey(req) === null,
 });

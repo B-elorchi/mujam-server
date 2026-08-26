@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
 import { invitationController } from '../../controllers/invitation.controller';
-import { authMiddleware } from '../../middleware/auth';
-import { adminMiddleware } from '../../middleware/adminAuth';
+import { inviteRouteAuth } from '../../middleware/inviteApiKey';
+import { inviteApiKeyLimiter } from '../../middleware/rateLimiter';
 
 const router = Router();
 
-router.use(authMiddleware);
-router.use(adminMiddleware);
+router.use(inviteApiKeyLimiter);
+router.use(inviteRouteAuth);
 
 router.get('/', invitationController.list);
 router.post(
