@@ -38,4 +38,20 @@ describe('Auth invitation-gated registration (validation)', () => {
     expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
   });
+
+  it('POST /api/admin/invitations rejects invalid API key', async () => {
+    const prev = process.env.INVITE_API_KEY;
+    process.env.INVITE_API_KEY = 'n8n-test-invite-api-key-secret';
+    try {
+      const res = await request(app)
+        .post('/api/admin/invitations')
+        .set('X-API-Key', 'definitely-not-the-right-key-value')
+        .send({ email: 'invitee@example.com', access: 'MOAJAM' });
+      expect(res.status).toBe(401);
+      expect(res.body.success).toBe(false);
+    } finally {
+      if (prev === undefined) delete process.env.INVITE_API_KEY;
+      else process.env.INVITE_API_KEY = prev;
+    }
+  });
 });

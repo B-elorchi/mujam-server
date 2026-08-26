@@ -72,7 +72,51 @@ CLOUDINARY_API_KEY=...
 CLOUDINARY_API_SECRET=...
 RESEND_API_KEY=re_...
 EMAIL_FROM=noreply@mujam.com
+SUPER_ADMIN_EMAIL=admin@mujam.com
+# Long-lived key for n8n / automation (min 24 chars). Rotate by changing + restart.
+INVITE_API_KEY=
 ```
+
+### n8n / invite automation API key
+
+Learner invitations (`GET`/`POST`/`DELETE /api/admin/invitations`) accept either:
+
+1. **Admin panel (unchanged):** `Authorization: Bearer <accessJWT>`
+2. **Automation (long-lived):** set `INVITE_API_KEY` on the server (min 24 characters), then send one of:
+   - `X-API-Key: <INVITE_API_KEY>`
+   - `Authorization: ApiKey <INVITE_API_KEY>`
+
+Invites created via the API key are attributed to `SUPER_ADMIN_EMAIL` (or `INVITE_API_ACTOR_EMAIL` if set). That user must exist and have an admin role. API-key traffic is rate-limited (60 requests / 15 minutes per IP).
+
+**curl example**
+
+```bash
+curl -X POST "https://YOUR_API_HOST/api/admin/invitations" \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: YOUR_INVITE_API_KEY" \
+  -d '{"email":"learner@example.com","access":"MOAJAM"}'
+```
+
+Kids access with optional parent:
+
+```bash
+curl -X POST "https://YOUR_API_HOST/api/admin/invitations" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: ApiKey YOUR_INVITE_API_KEY" \
+  -d '{"email":"child@example.com","access":"KIDS","parentEmail":"parent@example.com"}'
+```
+
+**n8n HTTP Request node**
+
+| Field | Value |
+|--------|--------|
+| Method | `POST` |
+| URL | `https://YOUR_API_HOST/api/admin/invitations` |
+| Authentication | None (use header below) |
+| Header | `X-API-Key` = your `INVITE_API_KEY` value |
+| Body (JSON) | `{ "email": "learner@example.com", "access": "MOAJAM" }` |
+
+`access` must be `MOAJAM`, `KIDS`, or `BOTH`. Optional `parentEmail` only when access includes KIDS.
 
 ## API Endpoints
 
@@ -121,6 +165,9 @@ EMAIL_FROM=noreply@mujam.com
 
 ### Admin
 - `GET /api/admin/users` - Manage users
+- `GET /api/admin/invitations` - List learner invitations (Bearer **or** `INVITE_API_KEY`)
+- `POST /api/admin/invitations` - Create learner invitation (Bearer **or** `INVITE_API_KEY`)
+- `DELETE /api/admin/invitations/:id` - Revoke invitation
 - `POST /api/admin/content/sentences` - Manage content
 - `GET /api/admin/ai/settings` - AI settings
 - `POST /api/admin/broadcast/send` - Send broadcast

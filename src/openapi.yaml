@@ -2107,6 +2107,13 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: Access token from login or refresh
+    inviteApiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: >
+        Long-lived INVITE_API_KEY for automation (n8n) on /api/admin/invitations.
+        Alternative header form: Authorization: ApiKey <INVITE_API_KEY>
 
   schemas: {}
 
