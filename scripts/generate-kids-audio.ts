@@ -63,11 +63,12 @@ import {
   audioSlug,
   collectKidsAudioTerms,
 } from './kids-audio-terms';
-import {
-  resolveTtsProvider,
-  type TtsProviderMode,
-} from '../src/services/ai/tts.service';
-import { resolveUsageUserId } from '../src/services/ai/usage.service';
+import type { TtsProviderMode } from '../dist/services/ai/tts.service';
+
+type ResolveTtsProvider = (
+  lang: 'en' | 'ar',
+  providerOverride?: TtsProviderMode
+) => 'deepgram' | 'openrouter';
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
@@ -121,7 +122,11 @@ On-demand alternative: set API keys and skip this script entirely.
 `);
 }
 
-function defaultDelayMs(langs: ('en' | 'ar')[], providerOverride?: TtsProviderMode): number {
+function defaultDelayMs(
+  langs: ('en' | 'ar')[],
+  resolveTtsProvider: ResolveTtsProvider,
+  providerOverride?: TtsProviderMode
+): number {
   const usesOpenRouter = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'openrouter');
   return usesOpenRouter ? DELAY_MS_OPENROUTER : DELAY_MS_DEEPGRAM;
 }
@@ -215,6 +220,7 @@ function sleep(ms: number) {
 async function generateForLang(
   terms: string[],
   lang: 'en' | 'ar',
+  resolveTtsProvider: ResolveTtsProvider,
   providerOverride: TtsProviderMode | undefined,
   outDir: string,
   force: boolean,
@@ -298,7 +304,11 @@ function printFailedSummary(failed: FailedTerm[], outDir: string, provider?: Tts
   console.log(`     npm run kids:generate-audio --${langFlag || ' --lang ar'}${providerFlag} --force`);
 }
 
-function validateEnvForLangs(langs: ('en' | 'ar')[], providerOverride?: TtsProviderMode) {
+function validateEnvForLangs(
+  langs: ('en' | 'ar')[],
+  resolveTtsProvider: ResolveTtsProvider,
+  providerOverride?: TtsProviderMode
+) {
   const needsDeepgram = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'deepgram');
   const needsOpenRouter = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'openrouter');
 
@@ -336,14 +346,20 @@ async function main() {
       ? ['en', 'ar']
       : [lang];
 
-  validateEnvForLangs(langs, provider);
+  const tts = await import('../dist/services/ai/tts.service');
+  const usage = await import('../dist/services/ai/usage.service');
+  const {
+    resolveTtsProvider,
+    textToSpeechForKids,
+    assertAuraEnglishVoice,
+    getKidsEnglishTtsSpeed,
+  } = tts;
+  const { resolveUsageUserId } = usage;
 
-  const resolvedDelay = delayOverride ?? defaultDelayMs(langs, provider);
+  validateEnvForLangs(langs, resolveTtsProvider, provider);
+
+  const resolvedDelay = delayOverride ?? defaultDelayMs(langs, resolveTtsProvider, provider);
   console.log(`   Request delay: ${resolvedDelay}ms between calls`);
-
-  const { textToSpeechForKids, assertAuraEnglishVoice, getKidsEnglishTtsSpeed } = await import(
-    '../src/services/ai/tts.service'
-  );
 
   if (langs.includes('en')) {
     const enSpeed = getKidsEnglishTtsSpeed();
@@ -391,6 +407,7 @@ async function main() {
     const stats = await generateForLang(
       terms,
       l,
+      resolveTtsProvider,
       provider,
       outDir,
       force || !!retryTerms,
@@ -410,6 +427,7 @@ async function main() {
       const retryStats = await generateForLang(
         stats.failed.map((f) => f.term),
         l,
+        resolveTtsProvider,
         provider,
         outDir,
         true,
