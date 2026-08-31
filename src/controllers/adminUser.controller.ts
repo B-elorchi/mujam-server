@@ -3,6 +3,12 @@ import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { getPagination } from '../utils/pagination';
 import { hashPassword } from '../utils/hash';
+import {
+  accessFlagsFromInvite,
+  normalizeInviteEmail,
+  parseInviteAccess,
+} from '../services/invitation.service';
+import { sendParentProgressInviteEmail } from '../config/email';
 
 export const adminUserController = {
   getUsers: async (req: Request, res: Response): Promise<Response> => {
@@ -89,28 +95,67 @@ export const adminUserController = {
 
   createUser: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { name, email, password, plan, currentLevel } = req.body;
+      const { name, email, password, plan, currentLevel, access, parentEmail } = req.body;
 
-      const existingUser = await prisma.user.findUnique({ where: { email } });
+      if (!name || !email || !password) {
+        return errorResponse(res, 'Name, email, and password are required', 400);
+      }
+
+      const normalizedEmail = normalizeInviteEmail(email);
+      const accessChoice = parseInviteAccess(access) ?? 'MOAJAM';
+      const flags = accessFlagsFromInvite(accessChoice);
+
+      let normalizedParentEmail: string | null = null;
+      if (flags.accessKids && parentEmail) {
+        normalizedParentEmail = normalizeInviteEmail(String(parentEmail));
+        if (normalizedParentEmail === normalizedEmail) {
+          return errorResponse(res, 'Parent email must differ from learner email', 400);
+        }
+      }
+
+      const existingUser = await prisma.user.findUnique({ where: { email: normalizedEmail } });
       if (existingUser) {
         return errorResponse(res, 'Email already in use', 400);
       }
 
       const hashedPassword = await hashPassword(password);
-      
+
       const user = await prisma.user.create({
         data: {
           name,
-          email,
+          email: normalizedEmail,
           passwordHash: hashedPassword,
           plan: plan || 'FREE',
           currentLevel: currentLevel ? parseInt(currentLevel) : 1,
           emailVerified: true, // admin created users are auto-verified
-          isActive: true
-        }
+          isActive: true,
+          accessMoajam: flags.accessMoajam,
+          accessKids: flags.accessKids,
+          parentEmail: flags.accessKids ? normalizedParentEmail : null,
+        },
       });
 
-      return successResponse(res, { id: user.id, name: user.name, email: user.email }, 'User created successfully', 201);
+      if (user.parentEmail) {
+        try {
+          await sendParentProgressInviteEmail(user.parentEmail, user.email, user.name);
+        } catch (parentErr) {
+          console.error('Parent progress email failed:', parentErr);
+        }
+      }
+
+      return successResponse(
+        res,
+        {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          accessMoajam: user.accessMoajam,
+          accessKids: user.accessKids,
+          parentEmail: user.parentEmail,
+        },
+        'User created successfully',
+        201
+      );
     } catch (error) {
       console.error('Create user error:', error);
       return errorResponse(res, 'Server error', 500);

@@ -1,6 +1,23 @@
 import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
+import { textToSpeech } from '../services/ai/tts.service';
+
+/** In-memory TTS cache for common kids vocabulary (avoids repeat Deepgram calls). */
+const kidsAudioCache = new Map<string, Buffer>();
+const KIDS_AUDIO_CACHE_MAX = 500;
+
+function kidsAudioCacheKey(text: string, lang: 'en' | 'ar'): string {
+  return `${lang}:${text.trim().toLowerCase()}`;
+}
+
+function cacheKidsAudio(key: string, buffer: Buffer) {
+  if (kidsAudioCache.size >= KIDS_AUDIO_CACHE_MAX) {
+    const firstKey = kidsAudioCache.keys().next().value;
+    if (firstKey) kidsAudioCache.delete(firstKey);
+  }
+  kidsAudioCache.set(key, buffer);
+}
 
 type ScreenRow = {
   type: string;
@@ -285,6 +302,36 @@ export const kidsController = {
     } catch (error) {
       console.error('Kids parent report error:', error);
       return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  /** On-demand TTS for kids lesson vocabulary (Deepgram; cached in memory). */
+  getWordAudio: async (req: Request, res: Response): Promise<Response | void> => {
+    try {
+      const rawText = typeof req.query.text === 'string' ? req.query.text.trim() : '';
+      const lang = req.query.lang === 'ar' ? 'ar' : 'en';
+
+      if (!rawText) {
+        return errorResponse(res, 'text query parameter is required', 400);
+      }
+      if (rawText.length > 120) {
+        return errorResponse(res, 'text too long', 400);
+      }
+
+      const cacheKey = kidsAudioCacheKey(rawText, lang);
+      let buffer = kidsAudioCache.get(cacheKey);
+
+      if (!buffer) {
+        buffer = await textToSpeech(rawText, 'normal', req.userId, lang);
+        cacheKidsAudio(cacheKey, buffer);
+      }
+
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Cache-Control', 'public, max-age=86400');
+      res.send(buffer);
+    } catch (error: any) {
+      console.error('Kids word audio error:', error);
+      return errorResponse(res, error?.message?.includes('Deepgram') ? 'TTS unavailable' : 'Server error', 503);
     }
   },
 };
