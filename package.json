@@ -14,6 +14,7 @@
     "media:stories": "ts-node scripts/generate-all-story-audio.ts",
     "media:sentences": "ts-node scripts/generate-all-audio.ts",
     "media:all": "ts-node scripts/generate-all-media-audio.ts",
+    "kids:generate-audio": "ts-node scripts/generate-kids-audio.ts",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
     "test": "vitest run",

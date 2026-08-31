@@ -4,9 +4,9 @@
  */
 import { Prisma, PrismaClient } from '@prisma/client'
 
-type FlashcardItem = { en: string; ar: string; icon: string }
+export type FlashcardItem = { en: string; ar: string; icon: string }
 
-type LessonScreen =
+export type LessonScreen =
   | { type: 'flashcard'; items: FlashcardItem[] }
   | { type: 'listen'; titleEn: string; titleAr: string; items: FlashcardItem[] }
   | { type: 'grid'; titleEn: string; titleAr: string; items: FlashcardItem[] }
@@ -24,7 +24,7 @@ type LessonScreen =
   | { type: 'speak'; titleEn: string; titleAr: string; items: FlashcardItem[] }
   | { type: 'complete' }
 
-type ModuleSeed = {
+export type ModuleSeed = {
   id: string
   titleEn: string
   titleAr: string
@@ -297,7 +297,8 @@ function numbersScreens(): LessonScreen[] {
   ]
 }
 
-const MODULES: ModuleSeed[] = [
+/** Source of truth for kids lesson vocabulary (used by audio generation script). */
+export const KIDS_MODULE_SEEDS: ModuleSeed[] = [
   {
     id: 'alphabet',
     titleEn: 'Alphabet',
@@ -506,7 +507,7 @@ function screenToPayload(screen: LessonScreen): Prisma.InputJsonValue {
 export async function seedKidsCourses(prisma: PrismaClient) {
   console.log('🧒 Seeding kids courses...')
 
-  for (const mod of MODULES) {
+  for (const mod of KIDS_MODULE_SEEDS) {
     await prisma.kidsModule.upsert({
       where: { id: mod.id },
       create: {
@@ -544,5 +545,5 @@ export async function seedKidsCourses(prisma: PrismaClient) {
     })
   }
 
-  console.log(`  ✓ ${MODULES.length} kids modules + ${MODULES.reduce((n, m) => n + m.screens.length, 0)} lesson screens seeded`)
+  console.log(`  ✓ ${KIDS_MODULE_SEEDS.length} kids modules + ${KIDS_MODULE_SEEDS.reduce((n, m) => n + m.screens.length, 0)} lesson screens seeded`)
 }
