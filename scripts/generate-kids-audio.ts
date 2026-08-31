@@ -36,13 +36,19 @@
  *   npm run kids:generate-audio -- --lang en --force   # re-generate EN MP3s after speed change
  *   npm run kids:generate-audio -- --dry-run                 # list terms only
  *
- * Output:
- *   ../mujam/public/audio/kids/en/<slug>.mp3   (Deepgram)
- *   ../mujam/public/audio/kids/ar/<slug>.wav   (OpenRouter Gemini — PCM wrapped as WAV)
- *   ../mujam/public/audio/kids/manifest.json
+ * Output (default path depends on environment — see resolveDefaultOutDir):
+ *   <out>/en/<slug>.mp3   (Deepgram)
+ *   <out>/ar/<slug>.wav   (OpenRouter Gemini — PCM wrapped as WAV)
+ *   <out>/manifest.json
+ *
+ *   Local dev (sibling repos): ../mujam/public/audio/kids
+ *   Docker / prod API container: /app/uploads/audio/kids (writable uploads volume)
+ *   Override anytime: KIDS_AUDIO_OUT or --out <dir>
  *
  * The frontend (mujam/src/kids/audio.ts) checks static .mp3/.wav first, then falls
- * back to the on-demand API. Rebuild/redeploy the mujam frontend after generating.
+ * back to the on-demand API. After generating in Docker, copy/sync files to the
+ * frontend public tree (mujam/public/audio/kids) and rebuild/deploy, or serve them
+ * from uploads if your stack exposes that path statically.
  *
  * ═══════════════════════════════════════════════════════════════════════════════
  * Cost / limits
@@ -72,7 +78,8 @@ type ResolveTtsProvider = (
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
-const DEFAULT_OUT = path.resolve(__dirname, '../../mujam/public/audio/kids');
+const DEV_SIBLING_OUT = path.resolve(__dirname, '../../mujam/public/audio/kids');
+const DOCKER_UPLOADS_OUT = '/app/uploads/audio/kids';
 const DELAY_MS_DEEPGRAM = 250;
 const DELAY_MS_OPENROUTER = 500;
 
@@ -85,6 +92,32 @@ interface FailedTermsFile {
   terms: Array<{ lang: 'en' | 'ar'; term: string }>;
 }
 
+function canWriteToDir(dir: string): boolean {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = path.join(dir, '.write-probe');
+    fs.writeFileSync(probe, '');
+    fs.unlinkSync(probe);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Dev sibling repo layout, else Docker uploads volume (writable in prod container). */
+function resolveDefaultOutDir(): string {
+  if (process.env.KIDS_AUDIO_OUT) {
+    return path.resolve(process.env.KIDS_AUDIO_OUT);
+  }
+
+  const siblingMujam = path.resolve(__dirname, '../../mujam');
+  if (fs.existsSync(siblingMujam) && canWriteToDir(DEV_SIBLING_OUT)) {
+    return DEV_SIBLING_OUT;
+  }
+
+  return DOCKER_UPLOADS_OUT;
+}
+
 function printHelp() {
   console.log(`
 Moajam Kids audio generator
@@ -95,7 +128,7 @@ Usage:
 Options:
   --lang <en|ar|all>       Language(s) to generate (default: all)
   --provider <mode>        TTS backend: deepgram | openrouter | auto (default: auto)
-  --out <dir>              Output root (default: mujam/public/audio/kids)
+  --out <dir>              Output root (default: auto — see KIDS_AUDIO_OUT)
   --force                  Overwrite existing audio files
   --dry-run                Print terms only, no API calls
   --delay <ms>             Pause between API calls (default: 500 OpenRouter / 250 Deepgram)
@@ -113,6 +146,7 @@ Environment:
   OPENROUTER_TTS_MODEL     Gemini TTS model (default google/gemini-3.1-flash-tts-preview)
   OPENROUTER_TTS_VOICE_AR  Gemini voice for Arabic (default Zephyr)
   AI_USAGE_SYSTEM_USER_ID  Optional user id for bulk usage logs (else SUPER_ADMIN_EMAIL)
+  KIDS_AUDIO_OUT           Output root (Docker default: /app/uploads/audio/kids)
 
 Provider selection (auto):
   en → Deepgram Aura (MP3)
@@ -167,7 +201,7 @@ function writeFailedTerms(outDir: string, failed: FailedTerm[]): void {
 function parseArgs(argv: string[]) {
   let lang: LangMode = 'all';
   let provider: TtsProviderMode | undefined;
-  let outDir = process.env.KIDS_AUDIO_OUT || DEFAULT_OUT;
+  let outDir = resolveDefaultOutDir();
   let force = false;
   let dryRun = false;
   let delayMs: number | undefined;
@@ -328,7 +362,8 @@ async function main() {
   );
   const { en, ar } = collectKidsAudioTerms();
 
-  console.log(`\n🧒 Moajam Kids audio — ${en.length} EN terms, ${ar.length} AR terms\n`);
+  console.log(`\n🧒 Moajam Kids audio — ${en.length} EN terms, ${ar.length} AR terms`);
+  console.log(`   Output directory: ${outDir}\n`);
 
   if (dryRun) {
     console.log('English:');
@@ -469,8 +504,12 @@ async function main() {
     )
   );
   console.log(`\n📋 Manifest: ${manifestPath}`);
+  const deployHint =
+    outDir.startsWith(DOCKER_UPLOADS_OUT) || outDir.includes('/uploads/')
+      ? 'Copy/sync to mujam/public/audio/kids and rebuild/deploy the frontend, or serve from uploads if configured'
+      : 'Rebuild/deploy mujam frontend to serve static files from /audio/kids/';
   console.log(
-    `\n✅ Done (${totalCreated} created, ${totalSkipped} skipped${allFailed.length ? `, ${allFailed.length} failed` : ''}). Rebuild/deploy mujam frontend to serve static files from /audio/kids/`
+    `\n✅ Done (${totalCreated} created, ${totalSkipped} skipped${allFailed.length ? `, ${allFailed.length} failed` : ''}). ${deployHint}`
   );
 }
 
