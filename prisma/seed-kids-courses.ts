@@ -20,6 +20,8 @@ type LessonScreen =
         options: { label: string; icon?: string; correct?: boolean }[]
       }[]
     }
+  | { type: 'sort'; titleEn: string; titleAr: string; items: FlashcardItem[] }
+  | { type: 'speak'; titleEn: string; titleAr: string; items: FlashcardItem[] }
   | { type: 'complete' }
 
 type ModuleSeed = {
@@ -118,6 +120,18 @@ function themeScreens(
     },
     { type: 'grid', titleEn, titleAr, items },
     { type: 'matching', items: items.slice(0, 4) },
+    {
+      type: 'sort',
+      titleEn: `Order: ${titleEn}`,
+      titleAr: `رتّب: ${titleAr}`,
+      items: items.slice(0, 4),
+    },
+    {
+      type: 'speak',
+      titleEn: `Say it: ${titleEn}`,
+      titleAr: `انطق: ${titleAr}`,
+      items: items.slice(0, 3),
+    },
     {
       type: 'choice',
       questions: [

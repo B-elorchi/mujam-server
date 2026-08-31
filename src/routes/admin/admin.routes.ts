@@ -14,6 +14,7 @@ import adminStoryRoutes from './adminStory.routes';
 import adminGrammarRuleRoutes from './adminGrammarRule.routes';
 import adminCommunityRoutes from './adminCommunity.routes';
 import adminNewsBannerRoutes from './adminNewsBanner.routes';
+import adminKidsRoutes from './adminKids.routes';
 import adminInvitationRoutes from './adminInvitation.routes';
 
 const router = Router();
@@ -26,6 +27,7 @@ router.use('/analytics', adminAnalyticsRoutes);
 router.use('/settings', adminSettingsRoutes);
 router.use('/placement', adminPlacementRoutes);
 router.use('/news-banners', adminNewsBannerRoutes);
+router.use('/kids', adminKidsRoutes);
 router.use('/invitations', adminInvitationRoutes);
 router.use('/', adminLevelRoutes); // Mounts /admin/levels
 router.use('/', adminSentenceRoutes); // Mounts /admin/sentences and /admin/levels/:id/sentences

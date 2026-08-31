@@ -769,7 +769,7 @@ model KidsModuleProgress {
 model KidsLessonScreen {
   id         String     @id @default(uuid())
   moduleId   String
-  type       String     // flashcard|grid|matching|choice|complete
+  type       String     // flashcard|listen|grid|matching|sort|speak|choice|complete
   orderIndex Int
   payload    Json       // screen fields matching frontend LessonScreen (minus type)
   module     KidsModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
