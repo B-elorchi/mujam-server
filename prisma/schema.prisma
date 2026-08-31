@@ -154,6 +154,7 @@ model User {
   loginEvents                  LoginEvent[]
   sessions                     UserSession[]
   invitationsCreated           UserInvitation[] @relation("UserInvitationsCreated")
+  kidsModuleProgress           KidsModuleProgress[]
 
   @@index([email])
   @@index([plan])
@@ -743,9 +744,26 @@ model KidsModule {
   stars      Int                @default(0) // 0-3 default display
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
-  screens    KidsLessonScreen[]
+  screens       KidsLessonScreen[]
+  userProgress  KidsModuleProgress[]
 
   @@index([isActive, orderIndex])
+}
+
+model KidsModuleProgress {
+  id          String     @id @default(uuid())
+  userId      String
+  moduleId    String
+  stars       Int        @default(3) // 0-3 earned on completion
+  minutesSpent Int       @default(8)
+  completedAt DateTime   @default(now())
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  module      KidsModule @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, moduleId])
+  @@index([userId])
+  @@index([moduleId])
+  @@index([userId, completedAt])
 }
 
 model KidsLessonScreen {

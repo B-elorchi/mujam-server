@@ -41,15 +41,80 @@ function paramId(req: Request): string {
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
+function weekKeyFromDate(d = new Date()): string {
+  const onejan = new Date(d.getFullYear(), 0, 1);
+  const week = Math.ceil(((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
+  return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
+}
+
+function startOfWeek(d = new Date()): Date {
+  const date = new Date(d);
+  const day = date.getDay();
+  const diff = day === 0 ? -6 : 1 - day; // Monday start
+  date.setDate(date.getDate() + diff);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+async function progressByModule(userId: string): Promise<Map<string, { stars: number; completedAt: Date }>> {
+  const rows = await prisma.kidsModuleProgress.findMany({
+    where: { userId },
+    select: { moduleId: true, stars: true, completedAt: true },
+  });
+  return new Map(rows.map((r) => [r.moduleId, { stars: r.stars, completedAt: r.completedAt }]));
+}
+
+async function aggregateChildStats(userId: string) {
+  const [allProgress, weekProgress] = await Promise.all([
+    prisma.kidsModuleProgress.findMany({
+      where: { userId },
+      select: { stars: true, minutesSpent: true },
+    }),
+    prisma.kidsModuleProgress.findMany({
+      where: {
+        userId,
+        completedAt: { gte: startOfWeek() },
+      },
+      select: { minutesSpent: true },
+    }),
+  ]);
+
+  return {
+    lessonsCompleted: allProgress.length,
+    stars: allProgress.reduce((s, p) => s + p.stars, 0),
+    minutesThisWeek: weekProgress.reduce((s, p) => s + p.minutesSpent, 0),
+  };
+}
+
 /** Public Moajam Kids course catalog + lessons */
 export const kidsController = {
-  listModules: async (_req: Request, res: Response): Promise<Response> => {
+  listModules: async (req: Request, res: Response): Promise<Response> => {
     try {
       const modules = await prisma.kidsModule.findMany({
         where: { isActive: true },
         orderBy: { orderIndex: 'asc' },
       });
-      return successResponse(res, modules.map(mapModule));
+
+      if (!req.userId) {
+        return successResponse(res, modules.map(mapModule));
+      }
+
+      const progress = await progressByModule(req.userId);
+
+      return successResponse(
+        res,
+        modules.map((m) => {
+          const p = progress.get(m.id);
+          if (p) {
+            return mapModule({
+              ...m,
+              progress: 100,
+              stars: Math.min(3, Math.max(0, p.stars)),
+            });
+          }
+          return mapModule({ ...m, progress: 0, stars: 0 });
+        })
+      );
     } catch (error) {
       console.error('List kids modules error:', error);
       return errorResponse(res, 'Server error', 500);
@@ -63,7 +128,20 @@ export const kidsController = {
         where: { id, isActive: true },
       });
       if (!mod) return errorResponse(res, 'Module not found', 404);
-      return successResponse(res, mapModule(mod));
+
+      if (!req.userId) {
+        return successResponse(res, mapModule(mod));
+      }
+
+      const progress = await progressByModule(req.userId);
+      const p = progress.get(mod.id);
+      if (p) {
+        return successResponse(
+          res,
+          mapModule({ ...mod, progress: 100, stars: Math.min(3, Math.max(0, p.stars)) })
+        );
+      }
+      return successResponse(res, mapModule({ ...mod, progress: 0, stars: 0 }));
     } catch (error) {
       console.error('Get kids module error:', error);
       return errorResponse(res, 'Server error', 500);
@@ -81,12 +159,67 @@ export const kidsController = {
       });
       if (!mod) return errorResponse(res, 'Module not found', 404);
 
+      let moduleDto = mapModule(mod);
+      if (req.userId) {
+        const progress = await progressByModule(req.userId);
+        const p = progress.get(mod.id);
+        if (p) {
+          moduleDto = mapModule({ ...mod, progress: 100, stars: Math.min(3, Math.max(0, p.stars)) });
+        } else {
+          moduleDto = mapModule({ ...mod, progress: 0, stars: 0 });
+        }
+      }
+
       return successResponse(res, {
-        module: mapModule(mod),
+        module: moduleDto,
         screens: mod.screens.map(mapScreen),
       });
     } catch (error) {
       console.error('Get kids lesson error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  completeLesson: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const userId = req.userId!;
+      const id = paramId(req);
+      const mod = await prisma.kidsModule.findFirst({
+        where: { id, isActive: true },
+      });
+      if (!mod) return errorResponse(res, 'Module not found', 404);
+
+      const user = await prisma.user.findUnique({
+        where: { id: userId },
+        select: { accessKids: true },
+      });
+      if (!user?.accessKids) {
+        return errorResponse(res, 'Kids access required', 403);
+      }
+
+      const body = req.body && typeof req.body === 'object' ? req.body : {};
+      const stars =
+        typeof body.stars === 'number' ? Math.min(3, Math.max(0, Math.round(body.stars))) : 3;
+      const minutesSpent =
+        typeof body.minutesSpent === 'number'
+          ? Math.min(120, Math.max(1, Math.round(body.minutesSpent)))
+          : 8;
+
+      const progress = await prisma.kidsModuleProgress.upsert({
+        where: { userId_moduleId: { userId, moduleId: id } },
+        create: { userId, moduleId: id, stars, minutesSpent },
+        update: { stars, minutesSpent, completedAt: new Date() },
+      });
+
+      return successResponse(res, {
+        moduleId: id,
+        stars: progress.stars,
+        minutesSpent: progress.minutesSpent,
+        completedAt: progress.completedAt,
+        progress: 100,
+      });
+    } catch (error) {
+      console.error('Complete kids lesson error:', error);
       return errorResponse(res, 'Server error', 500);
     }
   },
@@ -106,10 +239,7 @@ export const kidsController = {
 
       const children = await prisma.user.findMany({
         where: {
-          OR: [
-            { parentEmail: me.email },
-            { id: me.id, accessKids: true },
-          ],
+          OR: [{ parentEmail: me.email }, { id: me.id, accessKids: true }],
         },
         select: {
           id: true,
@@ -124,7 +254,6 @@ export const kidsController = {
         take: 10,
       });
 
-      // Deduplicate if parent is also a kids user linked to self
       const seen = new Set<string>();
       const unique = children.filter((c) => {
         if (seen.has(c.id)) return false;
@@ -134,28 +263,27 @@ export const kidsController = {
 
       const moduleCount = await prisma.kidsModule.count({ where: { isActive: true } });
 
-      const reportChildren = unique.map((c) => ({
-        id: c.id,
-        name: c.name,
-        email: c.email,
-        avatar: c.avatarUrl || '🧒',
-        isSelf: c.id === me.id,
-        // Progress fields until per-child lesson tracking exists
-        lessonsCompleted: 0,
-        stars: 0,
-        minutesThisWeek: 0,
-        moduleCount,
-      }));
+      const reportChildren = await Promise.all(
+        unique.map(async (c) => {
+          const stats = await aggregateChildStats(c.id);
+          return {
+            id: c.id,
+            name: c.name,
+            email: c.email,
+            avatar: c.avatarUrl || '🧒',
+            isSelf: c.id === me.id,
+            lessonsCompleted: stats.lessonsCompleted,
+            stars: stats.stars,
+            minutesThisWeek: stats.minutesThisWeek,
+            moduleCount,
+          };
+        })
+      );
 
       return successResponse(res, {
         parent: { id: me.id, email: me.email, name: me.name },
         children: reportChildren,
-        weekKey: (() => {
-          const d = new Date();
-          const onejan = new Date(d.getFullYear(), 0, 1);
-          const week = Math.ceil(((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
-          return `${d.getFullYear()}-W${String(week).padStart(2, '0')}`;
-        })(),
+        weekKey: weekKeyFromDate(),
       });
     } catch (error) {
       console.error('Kids parent report error:', error);

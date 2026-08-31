@@ -8,6 +8,7 @@ type FlashcardItem = { en: string; ar: string; icon: string }
 
 type LessonScreen =
   | { type: 'flashcard'; items: FlashcardItem[] }
+  | { type: 'listen'; titleEn: string; titleAr: string; items: FlashcardItem[] }
   | { type: 'grid'; titleEn: string; titleAr: string; items: FlashcardItem[] }
   | { type: 'matching'; items: FlashcardItem[] }
   | {
@@ -109,6 +110,12 @@ function themeScreens(
 ): LessonScreen[] {
   return [
     { type: 'flashcard', items },
+    {
+      type: 'listen',
+      titleEn: `Listen: ${titleEn}`,
+      titleAr: `استمع: ${titleAr}`,
+      items: items.slice(0, 4),
+    },
     { type: 'grid', titleEn, titleAr, items },
     { type: 'matching', items: items.slice(0, 4) },
     {
@@ -142,6 +149,12 @@ function themeScreens(
 function alphabetScreens(): LessonScreen[] {
   return [
     { type: 'flashcard', items: [letterWords.A, letterWords.B, letterWords.C, letterWords.D] },
+    {
+      type: 'listen',
+      titleEn: 'Listen to the letters',
+      titleAr: 'استمع إلى الحروف',
+      items: [letterWords.A, letterWords.B, letterWords.C, letterWords.D],
+    },
     {
       type: 'grid',
       titleEn: 'The Alphabet',
@@ -184,6 +197,12 @@ function numbersScreens(): LessonScreen[] {
   ]
   return [
     { type: 'flashcard', items: nums.slice(0, 5) },
+    {
+      type: 'listen',
+      titleEn: 'Listen to numbers',
+      titleAr: 'استمع إلى الأرقام',
+      items: nums.slice(0, 4),
+    },
     { type: 'grid', titleEn: 'Numbers 1–10', titleAr: 'الأرقام من ١ إلى ١٠', items: nums },
     { type: 'matching', items: nums.slice(0, 4) },
     {
