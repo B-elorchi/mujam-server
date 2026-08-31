@@ -30,11 +30,15 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  *
  *   cd mujam-server
- *   npm run kids:generate-audio                              # EN (Deepgram) + AR (OpenRouter)
+ *   npm run kids:generate-audio                              # EN (Deepgram) + AR (OpenRouter) — default auto
  *   npm run kids:generate-audio -- --lang ar --provider openrouter --force
- *   npm run kids:generate-audio -- --retry-failed          # re-run terms from last failed-terms.json
- *   npm run kids:generate-audio -- --lang en --force   # re-generate EN MP3s after speed change
+ *   npm run kids:generate-audio -- --retry-failed --lang ar --force   # retry failed-terms.json (AR)
+ *   npm run kids:generate-audio -- --lang en --force       # re-generate EN MP3s after speed change
  *   npm run kids:generate-audio -- --dry-run                 # list terms only
+ *
+ * Production (Docker API container — do NOT pass --provider openrouter with --lang all):
+ *   docker exec -it $CID npm run kids:generate-audio
+ *   docker exec -it $CID npm run kids:generate-audio -- --retry-failed --lang ar --force
  *
  * Output (default path depends on environment — see resolveDefaultOutDir):
  *   <out>/en/<slug>.mp3   (Deepgram)
@@ -55,7 +59,7 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * Deepgram Aura: ~$0.015 / 1k chars (English).
  * OpenRouter Gemini 3.1 Flash TTS: ~$1 / 1M input chars + audio output tokens.
- * Script waits 500ms between OpenRouter requests (250ms for Deepgram-only) to reduce rate-limit risk.
+ * Script waits 1500ms between OpenRouter requests (250ms for Deepgram-only) to reduce rate-limit risk.
  * Usage is logged to AIUsageLog (feature kids_tts_bulk) under the
  * system admin user (SUPER_ADMIN_EMAIL or AI_USAGE_SYSTEM_USER_ID).
  *
@@ -81,7 +85,7 @@ dotenv.config({ path: path.join(__dirname, '../.env') });
 const DEV_SIBLING_OUT = path.resolve(__dirname, '../../mujam/public/audio/kids');
 const DOCKER_UPLOADS_OUT = '/app/uploads/audio/kids';
 const DELAY_MS_DEEPGRAM = 250;
-const DELAY_MS_OPENROUTER = 500;
+const DELAY_MS_OPENROUTER = 1500;
 
 type LangMode = 'en' | 'ar' | 'all';
 
@@ -131,7 +135,7 @@ Options:
   --out <dir>              Output root (default: auto — see KIDS_AUDIO_OUT)
   --force                  Overwrite existing audio files
   --dry-run                Print terms only, no API calls
-  --delay <ms>             Pause between API calls (default: 500 OpenRouter / 250 Deepgram)
+  --delay <ms>             Pause between API calls (default: 1500 OpenRouter / 250 Deepgram)
   --delay-ms <ms>          Alias for --delay
   --retry-failed           Re-generate terms listed in <out>/failed-terms.json
   --help                   Show this help
@@ -148,20 +152,60 @@ Environment:
   AI_USAGE_SYSTEM_USER_ID  Optional user id for bulk usage logs (else SUPER_ADMIN_EMAIL)
   KIDS_AUDIO_OUT           Output root (Docker default: /app/uploads/audio/kids)
 
-Provider selection (auto):
+Provider selection (auto — recommended for production):
   en → Deepgram Aura (MP3)
   ar → OpenRouter Gemini (WAV — Gemini returns PCM only)
+
+  --provider openrouter applies to Arabic only (unless --lang en for testing).
+  Do not use --provider openrouter with --lang all — English must use Deepgram.
 
 On-demand alternative: set API keys and skip this script entirely.
 `);
 }
 
+/**
+ * Per-language provider for bulk generation.
+ * --provider openrouter targets Arabic only unless --lang en (explicit EN OpenRouter test).
+ */
+function resolveBulkProvider(
+  lang: 'en' | 'ar',
+  providerOverride: TtsProviderMode | undefined,
+  langMode: LangMode
+): TtsProviderMode | undefined {
+  if (!providerOverride || providerOverride === 'auto') {
+    return providerOverride;
+  }
+  if (providerOverride === 'deepgram') {
+    return 'deepgram';
+  }
+  if (lang === 'ar') {
+    return 'openrouter';
+  }
+  if (langMode === 'en') {
+    return 'openrouter';
+  }
+  return 'deepgram';
+}
+
+function resolveBulkBackend(
+  lang: 'en' | 'ar',
+  providerOverride: TtsProviderMode | undefined,
+  langMode: LangMode,
+  resolveTtsProvider: ResolveTtsProvider
+): 'deepgram' | 'openrouter' {
+  const bulkProvider = resolveBulkProvider(lang, providerOverride, langMode);
+  return resolveTtsProvider(lang, bulkProvider);
+}
+
 function defaultDelayMs(
   langs: ('en' | 'ar')[],
+  langMode: LangMode,
   resolveTtsProvider: ResolveTtsProvider,
   providerOverride?: TtsProviderMode
 ): number {
-  const usesOpenRouter = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'openrouter');
+  const usesOpenRouter = langs.some(
+    (l) => resolveBulkBackend(l, providerOverride, langMode, resolveTtsProvider) === 'openrouter'
+  );
   return usesOpenRouter ? DELAY_MS_OPENROUTER : DELAY_MS_DEEPGRAM;
 }
 
@@ -254,6 +298,7 @@ function sleep(ms: number) {
 async function generateForLang(
   terms: string[],
   lang: 'en' | 'ar',
+  langMode: LangMode,
   resolveTtsProvider: ResolveTtsProvider,
   providerOverride: TtsProviderMode | undefined,
   outDir: string,
@@ -269,7 +314,8 @@ async function generateForLang(
   ) => Promise<{ buffer: Buffer; extension: 'mp3' | 'wav'; provider: string }>,
   label = ''
 ): Promise<{ created: number; skipped: number; failed: FailedTerm[] }> {
-  const provider = resolveTtsProvider(lang, providerOverride);
+  const bulkProvider = resolveBulkProvider(lang, providerOverride, langMode);
+  const provider = resolveBulkBackend(lang, providerOverride, langMode, resolveTtsProvider);
   const langDir = path.join(outDir, lang);
   fs.mkdirSync(langDir, { recursive: true });
 
@@ -277,10 +323,13 @@ async function generateForLang(
   let skipped = 0;
   const failed: FailedTerm[] = [];
 
+  const providerLabel =
+    provider === 'openrouter' ? 'OpenRouter Gemini → WAV' : 'Deepgram → MP3';
+
   if (label) {
     console.log(`\n   ${label}`);
   } else {
-    console.log(`   Provider: ${provider} (${lang === 'ar' ? 'OpenRouter Gemini → WAV' : 'Deepgram → MP3'})`);
+    console.log(`   Provider: ${provider} (${providerLabel})`);
   }
 
   for (const term of terms) {
@@ -296,7 +345,10 @@ async function generateForLang(
 
     try {
       process.stdout.write(`  🎵 [${lang}] "${term}" → ${slug}.${ext} … `);
-      const result = await textToSpeechForKids(term, lang, usageUserId, { provider, bulk: true });
+      const result = await textToSpeechForKids(term, lang, usageUserId, {
+        provider: bulkProvider,
+        bulk: true,
+      });
       fs.writeFileSync(filePath, result.buffer);
       created++;
       console.log('✓');
@@ -315,7 +367,7 @@ async function generateForLang(
   return { created, skipped, failed };
 }
 
-function printFailedSummary(failed: FailedTerm[], outDir: string, provider?: TtsProviderMode) {
+function printFailedSummary(failed: FailedTerm[], outDir: string) {
   if (failed.length === 0) return;
 
   console.log(`\n❌ ${failed.length} term(s) still failed:`);
@@ -327,24 +379,27 @@ function printFailedSummary(failed: FailedTerm[], outDir: string, provider?: Tts
   writeFailedTerms(outDir, failed);
 
   const langSet = [...new Set(failed.map((f) => f.lang))];
-  const langFlag = langSet.length === 1 ? ` --lang ${langSet[0]}` : langSet.length === 2 ? '' : ` --lang ${langSet[0]}`;
-  const providerFlag =
-    provider && provider !== 'auto' ? ` --provider ${provider}` : ' --provider openrouter';
+  const langFlag = langSet.length === 1 ? ` --lang ${langSet[0]}` : '';
 
   console.log(`\n📄 Failed terms saved to ${failedFile}`);
-  console.log('   Retry only failures:');
-  console.log(`     npm run kids:generate-audio -- --retry-failed${langFlag}${providerFlag} --force`);
-  console.log('   Or re-run the full language batch:');
-  console.log(`     npm run kids:generate-audio --${langFlag || ' --lang ar'}${providerFlag} --force`);
+  console.log('   Retry only failures (production Docker):');
+  console.log(`     docker exec -it $CID npm run kids:generate-audio -- --retry-failed${langFlag} --force`);
+  console.log('   Local retry:');
+  console.log(`     npm run kids:generate-audio -- --retry-failed${langFlag} --force`);
 }
 
 function validateEnvForLangs(
   langs: ('en' | 'ar')[],
+  langMode: LangMode,
   resolveTtsProvider: ResolveTtsProvider,
   providerOverride?: TtsProviderMode
 ) {
-  const needsDeepgram = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'deepgram');
-  const needsOpenRouter = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'openrouter');
+  const needsDeepgram = langs.some(
+    (l) => resolveBulkBackend(l, providerOverride, langMode, resolveTtsProvider) === 'deepgram'
+  );
+  const needsOpenRouter = langs.some(
+    (l) => resolveBulkBackend(l, providerOverride, langMode, resolveTtsProvider) === 'openrouter'
+  );
 
   if (needsDeepgram && !process.env.DEEPGRAM_API_KEY) {
     console.error('❌ DEEPGRAM_API_KEY is not set (required for English / deepgram provider).');
@@ -391,9 +446,9 @@ async function main() {
   } = tts;
   const { resolveUsageUserId } = usage;
 
-  validateEnvForLangs(langs, resolveTtsProvider, provider);
+  validateEnvForLangs(langs, lang, resolveTtsProvider, provider);
 
-  const resolvedDelay = delayOverride ?? defaultDelayMs(langs, resolveTtsProvider, provider);
+  const resolvedDelay = delayOverride ?? defaultDelayMs(langs, lang, resolveTtsProvider, provider);
   console.log(`   Request delay: ${resolvedDelay}ms between calls`);
 
   if (langs.includes('en')) {
@@ -401,7 +456,7 @@ async function main() {
     console.log(`   Kids EN TTS speed: ${enSpeed} (Deepgram Aura-2 min 0.7)`);
   }
 
-  if (langs.includes('en') && resolveTtsProvider('en', provider) === 'deepgram') {
+  if (langs.includes('en') && resolveBulkBackend('en', provider, lang, resolveTtsProvider) === 'deepgram') {
     const enVoice = process.env.AI_TTS_VOICE_EN || 'aura-asteria-en';
     try {
       assertAuraEnglishVoice(enVoice);
@@ -442,6 +497,7 @@ async function main() {
     const stats = await generateForLang(
       terms,
       l,
+      lang,
       resolveTtsProvider,
       provider,
       outDir,
@@ -457,11 +513,12 @@ async function main() {
     let langFailed = stats.failed;
 
     if (stats.failed.length > 0) {
-      const retryDelay = Math.max(resolvedDelay * 2, DELAY_MS_OPENROUTER);
+      const retryDelay = Math.max(resolvedDelay * 3, DELAY_MS_OPENROUTER * 2);
       console.log(`\n🔁 Second pass for ${stats.failed.length} failed [${l}] term(s) (delay ${retryDelay}ms)…`);
       const retryStats = await generateForLang(
         stats.failed.map((f) => f.term),
         l,
+        lang,
         resolveTtsProvider,
         provider,
         outDir,
@@ -483,7 +540,7 @@ async function main() {
 
   if (allFailed.length > 0) {
     process.exitCode = 1;
-    printFailedSummary(allFailed, outDir, provider);
+    printFailedSummary(allFailed, outDir);
   } else if (fs.existsSync(failedTermsPath(outDir))) {
     fs.unlinkSync(failedTermsPath(outDir));
   }

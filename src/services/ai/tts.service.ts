@@ -135,10 +135,18 @@ export function getConfiguredTtsProviderMode(): TtsProviderMode {
 
 /** Resolve which backend synthesizes audio for a language (optional CLI/script override). */
 export function resolveTtsProvider(lang: 'en' | 'ar', override?: TtsProviderMode): 'deepgram' | 'openrouter' {
+    const explicit = override !== undefined
     const mode = override ?? getConfiguredTtsProviderMode()
 
     if (mode === 'deepgram') return 'deepgram'
-    if (mode === 'openrouter') return 'openrouter'
+
+    if (mode === 'openrouter') {
+        // Explicit per-request override (e.g. bulk script --lang en --provider openrouter): honor it
+        if (explicit) return 'openrouter'
+        // TTS_PROVIDER=openrouter env: OpenRouter for Arabic; English stays on Deepgram when configured
+        if (lang === 'en' && process.env.DEEPGRAM_API_KEY) return 'deepgram'
+        return 'openrouter'
+    }
 
     // auto: Deepgram for English, OpenRouter Gemini for Arabic
     return lang === 'ar' ? 'openrouter' : 'deepgram'
