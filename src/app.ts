@@ -39,12 +39,14 @@ export function buildApp(): Application {
   app.set('trust proxy', 1);
 
   app.use(helmet());
-  const allowedOrigins = (
-    process.env.FRONTEND_URL ||
-    'https://app.moajam-sa.com,http://localhost:3000,http://localhost:3001,http://localhost:8080'
-  )
-    .split(',')
-    .map((o) => o.trim());
+  const allowedOrigins = [
+    ...(process.env.FRONTEND_URL ||
+      'https://app.moajam-sa.com,http://localhost:3000,http://localhost:3001,http://localhost:8080')
+      .split(',')
+      .map((o) => o.trim())
+      .filter(Boolean),
+    ...(process.env.CORS_EXTRA_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
+  ];
   app.use(
     cors({
       origin: (origin, cb) => {

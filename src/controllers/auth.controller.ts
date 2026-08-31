@@ -19,6 +19,7 @@ import { isPublicSignupAllowed, publicSignupAccessFlags } from '../utils/publicS
 export const authController = {
   /** Public: whether open registration is enabled (for UI CTAs). */
   registrationOptions: async (_req: Request, res: Response): Promise<Response> => {
+    res.setHeader('Cache-Control', 'no-store');
     return successResponse(res, { publicSignup: isPublicSignupAllowed() });
   },
 
