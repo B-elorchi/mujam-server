@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { isPublicSignupAllowed } from '../utils/publicSignup';
+import { isPublicSignupAllowed, publicSignupAccessFlags } from '../utils/publicSignup';
 
 describe('isPublicSignupAllowed', () => {
   const prev = process.env.ALLOW_PUBLIC_SIGNUP;
@@ -32,5 +32,18 @@ describe('isPublicSignupAllowed', () => {
     expect(isPublicSignupAllowed()).toBe(true);
     process.env.ALLOW_PUBLIC_SIGNUP = 'yes';
     expect(isPublicSignupAllowed()).toBe(true);
+  });
+});
+
+describe('publicSignupAccessFlags', () => {
+  it('grants kids-only access when signupSpace is kids', () => {
+    expect(publicSignupAccessFlags('kids')).toEqual({ accessMoajam: false, accessKids: true });
+    expect(publicSignupAccessFlags('KIDS')).toEqual({ accessMoajam: false, accessKids: true });
+  });
+
+  it('grants adult Moajam access by default', () => {
+    expect(publicSignupAccessFlags()).toEqual({ accessMoajam: true, accessKids: false });
+    expect(publicSignupAccessFlags('moajam')).toEqual({ accessMoajam: true, accessKids: false });
+    expect(publicSignupAccessFlags('')).toEqual({ accessMoajam: true, accessKids: false });
   });
 });

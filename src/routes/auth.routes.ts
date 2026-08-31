@@ -26,6 +26,7 @@ router.post(
     body('password').isLength({ min: 8 }).withMessage('Password must be at least 8 characters'),
     // Optional: required only when ALLOW_PUBLIC_SIGNUP is not enabled (enforced in controller)
     body('invitationToken').optional({ values: 'falsy' }).isString(),
+    body('signupSpace').optional({ values: 'falsy' }).isIn(['kids', 'moajam']),
   ],
   authController.register
 );

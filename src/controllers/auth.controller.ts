@@ -14,7 +14,7 @@ import {
   normalizeInviteEmail,
 } from '../services/invitation.service';
 import { sendParentProgressInviteEmail } from '../config/email';
-import { isPublicSignupAllowed } from '../utils/publicSignup';
+import { isPublicSignupAllowed, publicSignupAccessFlags } from '../utils/publicSignup';
 
 export const authController = {
   /** Public: whether open registration is enabled (for UI CTAs). */
@@ -29,7 +29,8 @@ export const authController = {
         return errorResponse(res, errors.array()[0].msg, 400);
       }
 
-      const { name, email, password, currentLevel, placementScore, invitationToken } = req.body;
+      const { name, email, password, currentLevel, placementScore, invitationToken, signupSpace } =
+        req.body;
       const rawInvite =
         typeof invitationToken === 'string' && invitationToken.trim()
           ? invitationToken.trim()
@@ -49,6 +50,9 @@ export const authController = {
 
         const passwordHash = await hashPassword(password);
         const verificationCode = generateRandomCode(6);
+        const access = publicSignupAccessFlags(
+          typeof signupSpace === 'string' ? signupSpace : undefined
+        );
 
         const user = await prisma.$transaction(async (tx) => {
           const created = await tx.user.create({
@@ -61,6 +65,8 @@ export const authController = {
               currentLevel: currentLevel || 0,
               placementScore: placementScore || 0,
               emailVerified: false,
+              accessMoajam: access.accessMoajam,
+              accessKids: access.accessKids,
             },
           });
 
