@@ -259,21 +259,21 @@ export const adminSentenceController = {
       }
 
       // Generate normal speed audio
-      const normalBuffer = await textToSpeech(sentence.textEn, 'normal', req.userId);
+      const normalResult = await textToSpeech(sentence.textEn, 'normal', req.userId);
       const audioUrlNormal = await uploadFile(
         'audioSentences',
-        normalBuffer,
+        normalResult.buffer,
         `${id}-normal.mp3`,
-        'audio/mpeg'
+        normalResult.contentType
       );
 
       // Generate slow speed audio
-      const slowBuffer = await textToSpeechSlow(sentence.textEn, req.userId);
+      const slowResult = await textToSpeechSlow(sentence.textEn, req.userId);
       const audioUrlSlow = await uploadFile(
         'audioSentences',
-        slowBuffer,
+        slowResult.buffer,
         `${id}-slow.mp3`,
-        'audio/mpeg'
+        slowResult.contentType
       );
 
       // Update sentence with new audio URLs
@@ -340,12 +340,12 @@ export const adminSentenceController = {
                 console.warn(`Could not delete old normal audio for sentence ${sentence.id}:`, err)
               );
             }
-            const normalBuffer = await textToSpeech(sentence.textEn, 'normal', req.userId);
+            const normalResult = await textToSpeech(sentence.textEn, 'normal', req.userId);
             audioUrlNormal = await uploadFile(
               'audioSentences',
-              normalBuffer,
+              normalResult.buffer,
               `${sentence.id}-normal.mp3`,
-              'audio/mpeg'
+              normalResult.contentType
             );
           }
 
@@ -355,12 +355,12 @@ export const adminSentenceController = {
                 console.warn(`Could not delete old slow audio for sentence ${sentence.id}:`, err)
               );
             }
-            const slowBuffer = await textToSpeechSlow(sentence.textEn, req.userId);
+            const slowResult = await textToSpeechSlow(sentence.textEn, req.userId);
             audioUrlSlow = await uploadFile(
               'audioSentences',
-              slowBuffer,
+              slowResult.buffer,
               `${sentence.id}-slow.mp3`,
-              'audio/mpeg'
+              slowResult.contentType
             );
           }
 

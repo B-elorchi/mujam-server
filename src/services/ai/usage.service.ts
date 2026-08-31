@@ -1,6 +1,6 @@
 import prisma from '../../config/database'
 
-export type AIServiceName = 'gpt' | 'deepgram' | 'deepgram-tts' | string
+export type AIServiceName = 'gpt' | 'deepgram' | 'deepgram-tts' | 'openrouter-tts' | string
 
 const GPT_PRICING: Record<string, { input: number; output: number }> = {
   'openai/gpt-4o-mini': { input: 0.15, output: 0.6 },
@@ -18,6 +18,11 @@ export function estimateSttCostUsd(durationSeconds: number): number {
 /** Deepgram Aura TTS — $0.015 / 1k characters */
 export function estimateTtsCostUsd(characters: number): number {
   return (characters / 1_000) * 0.015
+}
+
+/** OpenRouter Gemini TTS — ~$1 / 1M input chars (audio output priced separately on provider) */
+export function estimateOpenRouterTtsCostUsd(characters: number): number {
+  return (characters / 1_000_000) * 1.0
 }
 
 export function estimateTokens(text: string): number {
@@ -91,12 +96,29 @@ export async function logDeepgramTtsUsage(userId: string, text: string): Promise
   })
 }
 
+export async function logOpenRouterTtsUsage(
+  userId: string,
+  text: string,
+  model: string
+): Promise<void> {
+  const characters = text.length
+  await logAIUsage({
+    userId,
+    service: 'openrouter-tts',
+    characters,
+    costUsd: estimateOpenRouterTtsCostUsd(characters),
+  })
+  void model
+}
+
 export function serviceDisplayLabel(service: string): string {
   switch (service) {
     case 'deepgram':
       return 'Deepgram STT'
     case 'deepgram-tts':
       return 'Deepgram TTS'
+    case 'openrouter-tts':
+      return 'OpenRouter TTS (Gemini)'
     case 'gpt':
       return 'GPT / OpenRouter'
     default:
@@ -109,6 +131,7 @@ export function serviceTypeLabel(service: string): string {
     case 'deepgram':
       return 'stt'
     case 'deepgram-tts':
+    case 'openrouter-tts':
       return 'tts'
     case 'gpt':
       return 'chat'

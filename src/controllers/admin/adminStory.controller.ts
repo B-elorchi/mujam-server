@@ -296,22 +296,22 @@ export const adminStoryController = {
           }
 
           // Generate TTS audio
-          const audioBuffer = await textToSpeech(story.fullText, 'normal', req.userId);
+          const audioResult = await textToSpeech(story.fullText, 'normal', req.userId);
 
           // Upload to MinIO
           const audioUrl = await uploadFile(
             'audio-stories',
-            audioBuffer,
+            audioResult.buffer,
             `story-${story.id}-${Date.now()}.mp3`,
-            'audio/mpeg'
+            audioResult.contentType
           );
 
           // Generate word-level timing using the same audio buffer
           console.log(`Generating word timing for story: ${story.titleAr}...`);
           const wordsTiming = await generateWordTiming(
             req.userId!,
-            audioBuffer,
-            'audio/mpeg',
+            audioResult.buffer,
+            audioResult.contentType,
             story.fullText
           );
 

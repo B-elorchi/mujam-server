@@ -3,20 +3,20 @@ import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { textToSpeech } from '../services/ai/tts.service';
 
-/** In-memory TTS cache for common kids vocabulary (avoids repeat Deepgram calls). */
-const kidsAudioCache = new Map<string, Buffer>();
+/** In-memory TTS cache for common kids vocabulary (avoids repeat provider calls). */
+const kidsAudioCache = new Map<string, { buffer: Buffer; contentType: string }>();
 const KIDS_AUDIO_CACHE_MAX = 500;
 
 function kidsAudioCacheKey(text: string, lang: 'en' | 'ar'): string {
   return `${lang}:${text.trim().toLowerCase()}`;
 }
 
-function cacheKidsAudio(key: string, buffer: Buffer) {
+function cacheKidsAudio(key: string, entry: { buffer: Buffer; contentType: string }) {
   if (kidsAudioCache.size >= KIDS_AUDIO_CACHE_MAX) {
     const firstKey = kidsAudioCache.keys().next().value;
     if (firstKey) kidsAudioCache.delete(firstKey);
   }
-  kidsAudioCache.set(key, buffer);
+  kidsAudioCache.set(key, entry);
 }
 
 type ScreenRow = {
@@ -305,7 +305,7 @@ export const kidsController = {
     }
   },
 
-  /** On-demand TTS for kids lesson vocabulary (Deepgram; cached in memory). */
+  /** On-demand TTS for kids lesson vocabulary (Deepgram / OpenRouter Gemini; cached in memory). */
   getWordAudio: async (req: Request, res: Response): Promise<Response | void> => {
     try {
       const rawText = typeof req.query.text === 'string' ? req.query.text.trim() : '';
@@ -319,25 +319,26 @@ export const kidsController = {
       }
 
       const cacheKey = kidsAudioCacheKey(rawText, lang);
-      let buffer = kidsAudioCache.get(cacheKey);
+      let cached = kidsAudioCache.get(cacheKey);
 
-      if (!buffer) {
-        buffer = await textToSpeech(rawText, 'normal', req.userId, lang);
-        cacheKidsAudio(cacheKey, buffer);
+      if (!cached) {
+        const result = await textToSpeech(rawText, 'normal', req.userId, lang);
+        cached = { buffer: result.buffer, contentType: result.contentType };
+        cacheKidsAudio(cacheKey, cached);
       }
 
-      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Type', cached.contentType);
       res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.send(buffer);
+      res.send(cached.buffer);
     } catch (error: any) {
       console.error('Kids word audio error:', error);
       const isArabicUnsupported =
         error?.name === 'ArabicTtsUnsupportedError' ||
-        error?.message?.includes('does not support Arabic');
+        error?.message?.includes('Arabic TTS unavailable');
       if (isArabicUnsupported) {
         return errorResponse(res, 'Arabic TTS unavailable — use browser speech', 503);
       }
-      return errorResponse(res, error?.message?.includes('Deepgram') ? 'TTS unavailable' : 'Server error', 503);
+      return errorResponse(res, error?.message?.includes('TTS') ? 'TTS unavailable' : 'Server error', 503);
     }
   },
 };

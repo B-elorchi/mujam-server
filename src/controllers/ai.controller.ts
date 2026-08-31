@@ -224,8 +224,11 @@ export const aiController = {
       // 5. TTS (optional - gracefully handle failures)
       try {
         sendEvent('status', { step: 'generating_audio' });
-        const audioBuffer = await textToSpeech(cleanText, 'normal', (req as any).userId);
-        sendEvent('audio', { audioBase64: audioBuffer.toString('base64'), mimeType: 'audio/mpeg' });
+        const audioResult = await textToSpeech(cleanText, 'normal', (req as any).userId);
+        sendEvent('audio', {
+          audioBase64: audioResult.buffer.toString('base64'),
+          mimeType: audioResult.contentType,
+        });
       } catch (ttsError: any) {
         console.warn('TTS failed, continuing without audio:', ttsError.message);
         // Send text-only response if TTS fails
