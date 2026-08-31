@@ -8,7 +8,9 @@
  *
  *   DEEPGRAM_API_KEY=your_key
  *   AI_TTS_VOICE_EN=aura-asteria-en   # optional, default aura-asteria-en
- *   AI_TTS_VOICE_AR=aura-hera-ar      # optional, default aura-hera-ar
+ *
+ * Arabic: Deepgram Aura TTS does NOT support Arabic. AR bulk generation is skipped;
+ * the kids app uses browser speechSynthesis for Arabic (see mujam/src/kids/audio.ts).
  *
  * When a child taps Listen, the frontend calls:
  *   GET /api/kids/audio?text=<word>&lang=en
@@ -24,9 +26,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  *
  *   cd mujam-server
- *   npm run kids:generate-audio              # English (~130 terms)
- *   npm run kids:generate-audio -- --lang ar   # Arabic
- *   npm run kids:generate-audio -- --lang all  # both (default)
+ *   npm run kids:generate-audio              # English only (~130 terms)
+ *   npm run kids:generate-audio -- --lang ar   # skipped (no Deepgram Arabic TTS)
+ *   npm run kids:generate-audio -- --lang all  # English only; AR skipped with notice
  *   npm run kids:generate-audio -- --dry-run # list terms only
  *   npm run kids:generate-audio -- --force   # overwrite existing files
  *
@@ -41,8 +43,8 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * Cost / limits (Deepgram Aura TTS)
  * ═══════════════════════════════════════════════════════════════════════════════
- * ~$0.015 per 1,000 characters. Full kids catalog ≈ 130 EN + 130 AR terms,
- * ~8 chars average → ~2,000 chars per language → ~$0.03 per language total.
+ * ~$0.015 per 1,000 characters. Full kids catalog ≈ 130 EN terms,
+ * ~8 chars average → ~1,000 chars → ~$0.015 total for English.
  * Free tier includes credits; watch usage in the Deepgram console.
  * Script waits 250ms between requests to reduce rate-limit risk.
  *
@@ -82,7 +84,9 @@ Options:
 Environment:
   DEEPGRAM_API_KEY     Required for generation
   AI_TTS_VOICE_EN      Optional English voice (default aura-asteria-en)
-  AI_TTS_VOICE_AR      Optional Arabic voice (default aura-hera-ar)
+
+Arabic: Deepgram Aura has no Arabic TTS voices. Use --lang en for bulk MP3s;
+  Arabic playback uses browser speech in the kids app (no server TTS).
 
 On-demand alternative: set DEEPGRAM_API_KEY and skip this script entirely.
 `);
@@ -135,6 +139,16 @@ async function generateForLang(
   manifest: Record<string, string>,
   textToSpeech: (text: string, speed: 'normal' | 'slow', userId?: string, language?: 'en' | 'ar') => Promise<Buffer>
 ) {
+  if (lang === 'ar') {
+    console.log(`
+⚠️  Skipping Arabic bulk generation — Deepgram Aura TTS does not support Arabic.
+    Supported TTS languages: en, es, de, fr, nl, it, ja
+    Arabic audio in the kids app uses browser speechSynthesis (see mujam/src/kids/audio.ts).
+    To pre-generate English only: npm run kids:generate-audio -- --lang en
+`);
+    return { created: 0, skipped: terms.length, failed: 0 };
+  }
+
   const langDir = path.join(outDir, lang);
   fs.mkdirSync(langDir, { recursive: true });
 
@@ -161,7 +175,10 @@ async function generateForLang(
     } catch (err: unknown) {
       failed++;
       const msg = err instanceof Error ? err.message : String(err);
-      console.log(`✗ ${msg}`);
+      const hint = /No such model|invalid.*voice/i.test(msg)
+        ? ' — check AI_TTS_VOICE_EN (e.g. aura-asteria-en)'
+        : '';
+      console.log(`✗ ${msg}${hint}`);
     }
 
     if (delayMs > 0) await sleep(delayMs);
@@ -191,11 +208,28 @@ async function main() {
     process.exit(1);
   }
 
-  const { textToSpeech } = await import('../src/services/ai/tts.service');
+  const { textToSpeech, assertAuraEnglishVoice, DEEPGRAM_ARABIC_TTS_SUPPORTED } = await import(
+    '../src/services/ai/tts.service'
+  );
+
+  const enVoice = process.env.AI_TTS_VOICE_EN || 'aura-asteria-en';
+  try {
+    assertAuraEnglishVoice(enVoice);
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error(`❌ ${msg}`);
+    process.exit(1);
+  }
 
   fs.mkdirSync(outDir, { recursive: true });
   const manifest: Record<string, string> = {};
   const langs: ('en' | 'ar')[] = lang === 'all' ? ['en', 'ar'] : [lang];
+
+  if (langs.includes('ar') && !DEEPGRAM_ARABIC_TTS_SUPPORTED) {
+    console.log(
+      'ℹ️  Arabic (--lang ar / --lang all): Deepgram Aura has no Arabic TTS; AR terms will be skipped.\n'
+    );
+  }
 
   for (const l of langs) {
     const terms = l === 'en' ? en : ar;

@@ -1,13 +1,69 @@
 import deepgram from '../../config/deepgram'
 import { logDeepgramTtsUsage } from './usage.service'
 
-// Deepgram Aura voices (English)
-export type TTSVoiceEN = 'aura-asteria-en' | 'aura-luna-en' | 'aura-stella-en' | 'aura-athena-en' | 'aura-hera-en' | 'aura-orion-en' | 'aura-arcas-en' | 'aura-perseus-en' | 'aura-angus-en' | 'aura-orpheus-en' | 'aura-helios-en' | 'aura-zeus-en'
+/** Deepgram Aura TTS languages (see https://developers.deepgram.com/docs/tts-models) */
+export const DEEPGRAM_AURA_TTS_LANGUAGES = ['en', 'es', 'de', 'fr', 'nl', 'it', 'ja'] as const
 
-// Deepgram Aura voices (Arabic)
-export type TTSVoiceAR = 'aura-hera-ar' | 'aura-athena-ar'
+/** Deepgram Aura does not offer Arabic TTS — use browser speechSynthesis on the client. */
+export const DEEPGRAM_ARABIC_TTS_SUPPORTED = false
 
-export type TTSVoice = TTSVoiceEN | TTSVoiceAR
+export class ArabicTtsUnsupportedError extends Error {
+    constructor() {
+        super(
+            'Deepgram Aura TTS does not support Arabic. Supported languages: en, es, de, fr, nl, it, ja. Use browser speech synthesis for Arabic audio.'
+        )
+        this.name = 'ArabicTtsUnsupportedError'
+    }
+}
+
+// Deepgram Aura v1 English voices (also accepts aura-2-* variants via env override)
+export type TTSVoiceEN =
+    | 'aura-asteria-en'
+    | 'aura-luna-en'
+    | 'aura-stella-en'
+    | 'aura-athena-en'
+    | 'aura-hera-en'
+    | 'aura-orion-en'
+    | 'aura-arcas-en'
+    | 'aura-perseus-en'
+    | 'aura-angus-en'
+    | 'aura-orpheus-en'
+    | 'aura-helios-en'
+    | 'aura-zeus-en'
+
+export type TTSVoice = TTSVoiceEN
+
+/** Sample of known-valid Aura English model IDs (v1 + v2). */
+export const VALID_AURA_EN_VOICES: readonly string[] = [
+    'aura-asteria-en',
+    'aura-luna-en',
+    'aura-stella-en',
+    'aura-athena-en',
+    'aura-hera-en',
+    'aura-orion-en',
+    'aura-arcas-en',
+    'aura-perseus-en',
+    'aura-angus-en',
+    'aura-orpheus-en',
+    'aura-helios-en',
+    'aura-zeus-en',
+    'aura-2-asteria-en',
+    'aura-2-thalia-en',
+    'aura-2-luna-en',
+    'aura-2-hera-en',
+]
+
+export function isValidAuraEnglishVoice(voice: string): boolean {
+    return VALID_AURA_EN_VOICES.includes(voice) || /^aura(-2)?-[a-z]+-en$/.test(voice)
+}
+
+export function assertAuraEnglishVoice(voice: string): void {
+    if (!isValidAuraEnglishVoice(voice)) {
+        throw new Error(
+            `Invalid Deepgram Aura English voice "${voice}". Examples: aura-asteria-en, aura-2-thalia-en. See https://developers.deepgram.com/docs/tts-models`
+        )
+    }
+}
 
 export interface TTSOptions {
     voice?: TTSVoice
@@ -42,14 +98,13 @@ export async function textToSpeech(
 
     // Auto-detect language if not provided
     const detectedLang = language || detectLanguage(text)
-    
-    // Select appropriate voice based on language
-    let voice: TTSVoice
+
     if (detectedLang === 'ar') {
-        voice = (process.env.AI_TTS_VOICE_AR as TTSVoiceAR) || 'aura-hera-ar'
-    } else {
-        voice = (process.env.AI_TTS_VOICE_EN as TTSVoiceEN) || 'aura-asteria-en'
+        throw new ArabicTtsUnsupportedError()
     }
+
+    const voice = (process.env.AI_TTS_VOICE_EN as TTSVoiceEN) || 'aura-asteria-en'
+    assertAuraEnglishVoice(voice)
 
     console.log(`TTS: Generating audio for ${detectedLang} text with voice ${voice}`)
 
@@ -82,7 +137,13 @@ export async function textToSpeech(
         return buffer
     } catch (error: any) {
         console.error('Deepgram TTS error:', error)
-        throw new Error(`TTS failed: ${error.message}`)
+        const msg = error?.message ?? String(error)
+        if (/No such model\/version combination found/i.test(msg)) {
+            throw new Error(
+                `TTS failed: Deepgram model "${voice}" is invalid or unavailable. Check AI_TTS_VOICE_EN against https://developers.deepgram.com/docs/tts-models`
+            )
+        }
+        throw new Error(`TTS failed: ${msg}`)
     }
 }
 

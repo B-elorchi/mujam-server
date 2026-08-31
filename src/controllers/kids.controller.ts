@@ -331,6 +331,12 @@ export const kidsController = {
       res.send(buffer);
     } catch (error: any) {
       console.error('Kids word audio error:', error);
+      const isArabicUnsupported =
+        error?.name === 'ArabicTtsUnsupportedError' ||
+        error?.message?.includes('does not support Arabic');
+      if (isArabicUnsupported) {
+        return errorResponse(res, 'Arabic TTS unavailable — use browser speech', 503);
+      }
       return errorResponse(res, error?.message?.includes('Deepgram') ? 'TTS unavailable' : 'Server error', 503);
     }
   },
