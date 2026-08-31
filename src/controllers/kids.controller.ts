@@ -16,12 +16,20 @@ function mapScreen(row: ScreenRow) {
   return { type: row.type, ...payload };
 }
 
+/** Modules are ordered levels; tier 1–3 groups the home screen. */
+function levelFromOrder(orderIndex: number): number {
+  if (orderIndex < 6) return 1;
+  if (orderIndex < 12) return 2;
+  return 3;
+}
+
 function mapModule(m: {
   id: string;
   titleEn: string;
   titleAr: string;
   icon: string;
   color: string;
+  orderIndex: number;
   progress: number;
   stars: number;
 }) {
@@ -31,6 +39,8 @@ function mapModule(m: {
     titleAr: m.titleAr,
     icon: m.icon,
     color: m.color,
+    level: levelFromOrder(m.orderIndex),
+    orderIndex: m.orderIndex,
     progress: m.progress,
     stars: m.stars,
   };
@@ -95,16 +105,12 @@ export const kidsController = {
         orderBy: { orderIndex: 'asc' },
       });
 
-      if (!req.userId) {
-        return successResponse(res, modules.map(mapModule));
-      }
-
-      const progress = await progressByModule(req.userId);
+      const progress = req.userId ? await progressByModule(req.userId) : null;
 
       return successResponse(
         res,
         modules.map((m) => {
-          const p = progress.get(m.id);
+          const p = progress?.get(m.id);
           if (p) {
             return mapModule({
               ...m,
@@ -129,12 +135,8 @@ export const kidsController = {
       });
       if (!mod) return errorResponse(res, 'Module not found', 404);
 
-      if (!req.userId) {
-        return successResponse(res, mapModule(mod));
-      }
-
-      const progress = await progressByModule(req.userId);
-      const p = progress.get(mod.id);
+      const progress = req.userId ? await progressByModule(req.userId) : null;
+      const p = progress?.get(mod.id);
       if (p) {
         return successResponse(
           res,
@@ -159,16 +161,11 @@ export const kidsController = {
       });
       if (!mod) return errorResponse(res, 'Module not found', 404);
 
-      let moduleDto = mapModule(mod);
-      if (req.userId) {
-        const progress = await progressByModule(req.userId);
-        const p = progress.get(mod.id);
-        if (p) {
-          moduleDto = mapModule({ ...mod, progress: 100, stars: Math.min(3, Math.max(0, p.stars)) });
-        } else {
-          moduleDto = mapModule({ ...mod, progress: 0, stars: 0 });
-        }
-      }
+      const progress = req.userId ? await progressByModule(req.userId) : null;
+      const p = progress?.get(mod.id);
+      const moduleDto = p
+        ? mapModule({ ...mod, progress: 100, stars: Math.min(3, Math.max(0, p.stars)) })
+        : mapModule({ ...mod, progress: 0, stars: 0 });
 
       return successResponse(res, {
         module: moduleDto,
