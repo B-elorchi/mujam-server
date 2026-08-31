@@ -82,6 +82,31 @@ export function assertAuraEnglishVoice(voice: string): void {
     }
 }
 
+/** Deepgram Aura-2 speed query param range (https://developers.deepgram.com/docs/tts-voice-controls). */
+export const DEEPGRAM_AURA2_SPEED_MIN = 0.7
+export const DEEPGRAM_AURA2_SPEED_MAX = 1.5
+
+export const KIDS_EN_TTS_SPEED_DEFAULT = 0.5
+
+export function isAura2Voice(voice: string): boolean {
+    return voice.startsWith('aura-2-')
+}
+
+/** Kids English playback speed from KIDS_TTS_SPEED_EN or AI_TTS_SPEED_EN (default 0.5). */
+export function getKidsEnglishTtsSpeed(): number {
+    const raw = process.env.KIDS_TTS_SPEED_EN ?? process.env.AI_TTS_SPEED_EN ?? String(KIDS_EN_TTS_SPEED_DEFAULT)
+    const parsed = parseFloat(raw)
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : KIDS_EN_TTS_SPEED_DEFAULT
+}
+
+/** Map desired speed to Deepgram Aura-2 API speed (0.7–1.5). Aura-1 voices ignore speed. */
+export function deepgramGenerationSpeed(desired: number, voice: string): number | undefined {
+    if (!isAura2Voice(voice)) return undefined
+    if (desired >= DEEPGRAM_AURA2_SPEED_MIN && desired <= DEEPGRAM_AURA2_SPEED_MAX) return desired
+    if (desired < DEEPGRAM_AURA2_SPEED_MIN) return DEEPGRAM_AURA2_SPEED_MIN
+    return DEEPGRAM_AURA2_SPEED_MAX
+}
+
 export interface TTSOptions {
     voice?: TTSVoice
     speed?: number
@@ -158,10 +183,19 @@ function openRouterVoiceForLang(lang: 'en' | 'ar'): string {
     return process.env.OPENROUTER_TTS_VOICE_EN || process.env.OPENROUTER_TTS_VOICE || 'Zephyr'
 }
 
+function openRouterInputText(text: string, lang: 'en' | 'ar', desiredSpeed?: number): string {
+    // Gemini TTS has no numeric speed param; [slow] tag steers pacing when kids EN speed is low.
+    if (lang === 'en' && desiredSpeed !== undefined && desiredSpeed <= 0.75) {
+        return `[slow] ${text}`
+    }
+    return text
+}
+
 async function openRouterTextToSpeech(
     text: string,
     lang: 'en' | 'ar',
-    userId?: string
+    userId?: string,
+    desiredSpeed?: number
 ): Promise<TtsAudioResult> {
     if (!process.env.OPENROUTER_API_KEY) {
         throw new Error('TTS configuration error: OPENROUTER_API_KEY is missing')
@@ -175,7 +209,7 @@ async function openRouterTextToSpeech(
     try {
         const response = await openrouter.audio.speech.create({
             model,
-            input: text,
+            input: openRouterInputText(text, lang, desiredSpeed),
             voice,
             response_format: 'pcm',
         })
@@ -207,7 +241,8 @@ async function openRouterTextToSpeech(
 async function deepgramTextToSpeech(
     text: string,
     lang: 'en' | 'ar',
-    userId?: string
+    userId?: string,
+    desiredSpeed?: number
 ): Promise<TtsAudioResult> {
     if (!process.env.DEEPGRAM_API_KEY) {
         throw new Error('TTS configuration error: Deepgram API key is missing')
@@ -220,16 +255,25 @@ async function deepgramTextToSpeech(
     const voice = (process.env.AI_TTS_VOICE_EN as TTSVoiceEN) || 'aura-asteria-en'
     assertAuraEnglishVoice(voice)
 
-    console.log(`TTS (Deepgram): Generating ${lang} audio with voice ${voice}`)
+    const apiSpeed = desiredSpeed !== undefined ? deepgramGenerationSpeed(desiredSpeed, voice) : undefined
+    const speedNote =
+        desiredSpeed !== undefined && apiSpeed !== undefined && desiredSpeed < apiSpeed
+            ? ` (requested ${desiredSpeed}, Deepgram min ${DEEPGRAM_AURA2_SPEED_MIN})`
+            : ''
+    console.log(
+        `TTS (Deepgram): Generating ${lang} audio with voice ${voice}${apiSpeed !== undefined ? ` at speed ${apiSpeed}` : ''}${speedNote}`
+    )
 
     try {
-        const response = await deepgram.speak.request(
-            { text },
-            {
-                model: voice,
-                encoding: 'mp3',
-            }
-        )
+        const speakOptions: Record<string, unknown> = {
+            model: voice,
+            encoding: 'mp3',
+        }
+        if (apiSpeed !== undefined) {
+            speakOptions.speed = apiSpeed
+        }
+
+        const response = await deepgram.speak.request({ text }, speakOptions)
 
         const stream = await response.getStream()
 
@@ -271,9 +315,9 @@ export async function textToSpeech(
     speed: 'normal' | 'slow' = 'normal',
     userId?: string,
     language?: 'en' | 'ar',
-    options?: Pick<TTSOptions, 'provider'>
+    options?: Pick<TTSOptions, 'provider' | 'speed'>
 ): Promise<TtsAudioResult> {
-    void speed // Deepgram/OpenRouter Gemini do not expose speed; frontend uses playbackRate
+    const numericSpeed = options?.speed ?? (speed === 'slow' ? 0.75 : undefined)
 
     if (!text || text.trim().length === 0) {
         throw new Error('TTS error: Empty text provided')
@@ -289,11 +333,11 @@ export async function textToSpeech(
             }
             throw new Error('TTS configuration error: OPENROUTER_API_KEY is missing')
         }
-        return openRouterTextToSpeech(text, detectedLang, userId)
+        return openRouterTextToSpeech(text, detectedLang, userId, numericSpeed)
     }
 
     try {
-        return await deepgramTextToSpeech(text, detectedLang, userId)
+        return await deepgramTextToSpeech(text, detectedLang, userId, numericSpeed)
     } catch (error) {
         if (
             error instanceof ArabicTtsUnsupportedError ||
@@ -303,8 +347,19 @@ export async function textToSpeech(
             throw error
         }
         console.warn('Deepgram TTS failed, falling back to OpenRouter:', error)
-        return openRouterTextToSpeech(text, detectedLang, userId)
+        return openRouterTextToSpeech(text, detectedLang, userId, numericSpeed)
     }
+}
+
+/** Kids lesson TTS — slower English by default (KIDS_TTS_SPEED_EN / AI_TTS_SPEED_EN, default 0.5). Arabic unchanged. */
+export async function textToSpeechForKids(
+    text: string,
+    lang: 'en' | 'ar',
+    userId?: string,
+    options?: Pick<TTSOptions, 'provider'>
+): Promise<TtsAudioResult> {
+    const speed = lang === 'en' ? getKidsEnglishTtsSpeed() : undefined
+    return textToSpeech(text, 'normal', userId, lang, { ...options, speed })
 }
 
 export async function textToSpeechSlow(

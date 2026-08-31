@@ -9,7 +9,8 @@
  *   DEEPGRAM_API_KEY=your_key
  *   OPENROUTER_API_KEY=your_key          # required for Arabic TTS
  *   TTS_PROVIDER=auto                    # deepgram for EN, OpenRouter Gemini for AR
- *   AI_TTS_VOICE_EN=aura-asteria-en      # optional Deepgram English voice
+ *   AI_TTS_VOICE_EN=aura-2-thalia-en     # Aura-2 required for speed control (0.7–1.5)
+ *   KIDS_TTS_SPEED_EN=0.5                # Kids English speed (Deepgram clamps to 0.7 min)
  *   OPENROUTER_TTS_MODEL=google/gemini-3.1-flash-tts-preview
  *   OPENROUTER_TTS_VOICE_AR=Zephyr       # Gemini prebuilt voice
  *
@@ -31,7 +32,7 @@
  *   cd mujam-server
  *   npm run kids:generate-audio                              # EN (Deepgram) + AR (OpenRouter)
  *   npm run kids:generate-audio -- --lang ar --provider openrouter --force
- *   npm run kids:generate-audio -- --lang en                 # English only
+ *   npm run kids:generate-audio -- --lang en --force   # re-generate EN MP3s after speed change
  *   npm run kids:generate-audio -- --dry-run                 # list terms only
  *
  * Output:
@@ -91,7 +92,9 @@ Environment:
   DEEPGRAM_API_KEY         Required for English (deepgram provider)
   OPENROUTER_API_KEY       Required for Arabic (openrouter / auto for ar)
   TTS_PROVIDER             Server default when --provider omitted (default: auto)
-  AI_TTS_VOICE_EN          Deepgram English voice (default aura-asteria-en)
+  AI_TTS_VOICE_EN          Deepgram English voice (Aura-2 for speed, e.g. aura-2-thalia-en)
+  KIDS_TTS_SPEED_EN        Kids English playback speed (default 0.5; Deepgram min 0.7)
+  AI_TTS_SPEED_EN          Alias for KIDS_TTS_SPEED_EN
   OPENROUTER_TTS_MODEL     Gemini TTS model (default google/gemini-3.1-flash-tts-preview)
   OPENROUTER_TTS_VOICE_AR  Gemini voice for Arabic (default Zephyr)
 
@@ -157,11 +160,10 @@ async function generateForLang(
   force: boolean,
   delayMs: number,
   manifest: Record<string, string>,
-  textToSpeech: (
+  textToSpeechForKids: (
     text: string,
-    speed: 'normal' | 'slow',
+    lang: 'en' | 'ar',
     userId?: string,
-    language?: 'en' | 'ar',
     options?: { provider?: TtsProviderMode }
   ) => Promise<{ buffer: Buffer; extension: 'mp3' | 'wav'; provider: string }>
 ) {
@@ -188,7 +190,7 @@ async function generateForLang(
 
     try {
       process.stdout.write(`  🎵 [${lang}] "${term}" → ${slug}.${ext} … `);
-      const result = await textToSpeech(term, 'normal', undefined, lang, { provider });
+      const result = await textToSpeechForKids(term, lang, undefined, { provider });
       fs.writeFileSync(filePath, result.buffer);
       created++;
       console.log('✓');
@@ -239,7 +241,14 @@ async function main() {
   const langs: ('en' | 'ar')[] = lang === 'all' ? ['en', 'ar'] : [lang];
   validateEnvForLangs(langs, provider);
 
-  const { textToSpeech, assertAuraEnglishVoice } = await import('../src/services/ai/tts.service');
+  const { textToSpeechForKids, assertAuraEnglishVoice, getKidsEnglishTtsSpeed } = await import(
+    '../src/services/ai/tts.service'
+  );
+
+  if (langs.includes('en')) {
+    const enSpeed = getKidsEnglishTtsSpeed();
+    console.log(`   Kids EN TTS speed: ${enSpeed} (Deepgram Aura-2 min 0.7)`);
+  }
 
   if (langs.includes('en') && resolveTtsProvider('en', provider) === 'deepgram') {
     const enVoice = process.env.AI_TTS_VOICE_EN || 'aura-asteria-en';
@@ -266,7 +275,7 @@ async function main() {
       force,
       delayMs,
       manifest,
-      textToSpeech
+      textToSpeechForKids
     );
     console.log(`\n   Created: ${stats.created}, skipped: ${stats.skipped}, failed: ${stats.failed}`);
     if (stats.failed > 0) process.exitCode = 1;
