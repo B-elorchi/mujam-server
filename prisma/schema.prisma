@@ -525,14 +525,28 @@ model AIUsageLog {
   id          String   @id @default(uuid())
   userId      String
   service     String
+  /// Product feature key, e.g. kids_tts, kids_tts_bulk, chat, stt, tts
+  feature     String?
+  /// Provider slug: openrouter, deepgram, openai
+  provider    String?
+  /// Model or voice id, e.g. google/gemini-3.1-flash-tts-preview, aura-2-thalia-en
+  model       String?
+  /// Masked API key label — never store full keys (e.g. OpenRouter, Deepgram)
+  keyLabel    String?
   tokens      Int?
+  /// Input character count (TTS text length)
   characters  Int?
+  outputBytes Int?
   durationMin Float?
   costUsd     Float
   createdAt   DateTime @default(now())
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+  @@index([feature])
+  @@index([provider])
+  @@index([keyLabel])
+  @@index([model])
 }
 
 model AISettings {

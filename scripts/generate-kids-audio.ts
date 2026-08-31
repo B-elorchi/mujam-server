@@ -32,6 +32,7 @@
  *   cd mujam-server
  *   npm run kids:generate-audio                              # EN (Deepgram) + AR (OpenRouter)
  *   npm run kids:generate-audio -- --lang ar --provider openrouter --force
+ *   npm run kids:generate-audio -- --retry-failed          # re-run terms from last failed-terms.json
  *   npm run kids:generate-audio -- --lang en --force   # re-generate EN MP3s after speed change
  *   npm run kids:generate-audio -- --dry-run                 # list terms only
  *
@@ -48,7 +49,9 @@
  * ═══════════════════════════════════════════════════════════════════════════════
  * Deepgram Aura: ~$0.015 / 1k chars (English).
  * OpenRouter Gemini 3.1 Flash TTS: ~$1 / 1M input chars + audio output tokens.
- * Script waits 250ms between requests to reduce rate-limit risk.
+ * Script waits 500ms between OpenRouter requests (250ms for Deepgram-only) to reduce rate-limit risk.
+ * Usage is logged to AIUsageLog (feature kids_tts_bulk) under the
+ * system admin user (SUPER_ADMIN_EMAIL or AI_USAGE_SYSTEM_USER_ID).
  *
  * Run: npx ts-node scripts/generate-kids-audio.ts --help
  */
@@ -64,13 +67,22 @@ import {
   resolveTtsProvider,
   type TtsProviderMode,
 } from '../src/services/ai/tts.service';
+import { resolveUsageUserId } from '../src/services/ai/usage.service';
 
 dotenv.config({ path: path.join(__dirname, '../.env') });
 
 const DEFAULT_OUT = path.resolve(__dirname, '../../mujam/public/audio/kids');
-const DELAY_MS = 250;
+const DELAY_MS_DEEPGRAM = 250;
+const DELAY_MS_OPENROUTER = 500;
 
 type LangMode = 'en' | 'ar' | 'all';
+
+type FailedTerm = { lang: 'en' | 'ar'; term: string; error: string };
+
+interface FailedTermsFile {
+  failedAt: string;
+  terms: Array<{ lang: 'en' | 'ar'; term: string }>;
+}
 
 function printHelp() {
   console.log(`
@@ -85,7 +97,9 @@ Options:
   --out <dir>              Output root (default: mujam/public/audio/kids)
   --force                  Overwrite existing audio files
   --dry-run                Print terms only, no API calls
-  --delay <ms>             Pause between API calls (default: 250)
+  --delay <ms>             Pause between API calls (default: 500 OpenRouter / 250 Deepgram)
+  --delay-ms <ms>          Alias for --delay
+  --retry-failed           Re-generate terms listed in <out>/failed-terms.json
   --help                   Show this help
 
 Environment:
@@ -97,6 +111,7 @@ Environment:
   AI_TTS_SPEED_EN          Alias for KIDS_TTS_SPEED_EN
   OPENROUTER_TTS_MODEL     Gemini TTS model (default google/gemini-3.1-flash-tts-preview)
   OPENROUTER_TTS_VOICE_AR  Gemini voice for Arabic (default Zephyr)
+  AI_USAGE_SYSTEM_USER_ID  Optional user id for bulk usage logs (else SUPER_ADMIN_EMAIL)
 
 Provider selection (auto):
   en → Deepgram Aura (MP3)
@@ -106,13 +121,52 @@ On-demand alternative: set API keys and skip this script entirely.
 `);
 }
 
+function defaultDelayMs(langs: ('en' | 'ar')[], providerOverride?: TtsProviderMode): number {
+  const usesOpenRouter = langs.some((l) => resolveTtsProvider(l, providerOverride) === 'openrouter');
+  return usesOpenRouter ? DELAY_MS_OPENROUTER : DELAY_MS_DEEPGRAM;
+}
+
+function failedTermsPath(outDir: string): string {
+  return path.join(outDir, 'failed-terms.json');
+}
+
+function loadRetryFailedTerms(outDir: string): Array<{ lang: 'en' | 'ar'; term: string }> | null {
+  const filePath = failedTermsPath(outDir);
+  if (!fs.existsSync(filePath)) {
+    console.error(`❌ No failed-terms file at ${filePath}. Run a full batch first.`);
+    process.exit(1);
+  }
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8')) as FailedTermsFile;
+    if (!Array.isArray(parsed.terms) || parsed.terms.length === 0) {
+      console.error(`❌ ${filePath} has no terms to retry.`);
+      process.exit(1);
+    }
+    return parsed.terms;
+  } catch {
+    console.error(`❌ Could not parse ${filePath}`);
+    process.exit(1);
+  }
+}
+
+function writeFailedTerms(outDir: string, failed: FailedTerm[]): void {
+  if (failed.length === 0) return;
+  const filePath = failedTermsPath(outDir);
+  const payload: FailedTermsFile = {
+    failedAt: new Date().toISOString(),
+    terms: failed.map(({ lang, term }) => ({ lang, term })),
+  };
+  fs.writeFileSync(filePath, JSON.stringify(payload, null, 2));
+}
+
 function parseArgs(argv: string[]) {
   let lang: LangMode = 'all';
   let provider: TtsProviderMode | undefined;
   let outDir = process.env.KIDS_AUDIO_OUT || DEFAULT_OUT;
   let force = false;
   let dryRun = false;
-  let delayMs = DELAY_MS;
+  let delayMs: number | undefined;
+  let retryFailed = false;
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -140,12 +194,18 @@ function parseArgs(argv: string[]) {
       force = true;
     } else if (arg === '--dry-run') {
       dryRun = true;
-    } else if (arg === '--delay' && argv[i + 1]) {
-      delayMs = parseInt(argv[++i], 10) || DELAY_MS;
+    } else if ((arg === '--delay' || arg === '--delay-ms') && argv[i + 1]) {
+      delayMs = parseInt(argv[++i], 10);
+      if (!Number.isFinite(delayMs) || delayMs < 0) {
+        console.error(`Invalid delay: ${argv[i]}`);
+        process.exit(1);
+      }
+    } else if (arg === '--retry-failed') {
+      retryFailed = true;
     }
   }
 
-  return { lang, provider, outDir, force, dryRun, delayMs };
+  return { lang, provider, outDir, force, dryRun, delayMs, retryFailed };
 }
 
 function sleep(ms: number) {
@@ -160,22 +220,28 @@ async function generateForLang(
   force: boolean,
   delayMs: number,
   manifest: Record<string, string>,
+  usageUserId: string | undefined,
   textToSpeechForKids: (
     text: string,
     lang: 'en' | 'ar',
     userId?: string,
-    options?: { provider?: TtsProviderMode }
-  ) => Promise<{ buffer: Buffer; extension: 'mp3' | 'wav'; provider: string }>
-) {
+    options?: { provider?: TtsProviderMode; bulk?: boolean }
+  ) => Promise<{ buffer: Buffer; extension: 'mp3' | 'wav'; provider: string }>,
+  label = ''
+): Promise<{ created: number; skipped: number; failed: FailedTerm[] }> {
   const provider = resolveTtsProvider(lang, providerOverride);
   const langDir = path.join(outDir, lang);
   fs.mkdirSync(langDir, { recursive: true });
 
   let created = 0;
   let skipped = 0;
-  let failed = 0;
+  const failed: FailedTerm[] = [];
 
-  console.log(`   Provider: ${provider} (${lang === 'ar' ? 'OpenRouter Gemini → WAV' : 'Deepgram → MP3'})`);
+  if (label) {
+    console.log(`\n   ${label}`);
+  } else {
+    console.log(`   Provider: ${provider} (${lang === 'ar' ? 'OpenRouter Gemini → WAV' : 'Deepgram → MP3'})`);
+  }
 
   for (const term of terms) {
     const slug = audioSlug(term, lang);
@@ -190,13 +256,13 @@ async function generateForLang(
 
     try {
       process.stdout.write(`  🎵 [${lang}] "${term}" → ${slug}.${ext} … `);
-      const result = await textToSpeechForKids(term, lang, undefined, { provider });
+      const result = await textToSpeechForKids(term, lang, usageUserId, { provider, bulk: true });
       fs.writeFileSync(filePath, result.buffer);
       created++;
       console.log('✓');
     } catch (err: unknown) {
-      failed++;
       const msg = err instanceof Error ? err.message : String(err);
+      failed.push({ lang, term, error: msg });
       const hint = /No such model|invalid.*voice/i.test(msg)
         ? ' — check AI_TTS_VOICE_EN or OPENROUTER_TTS_MODEL'
         : '';
@@ -207,6 +273,29 @@ async function generateForLang(
   }
 
   return { created, skipped, failed };
+}
+
+function printFailedSummary(failed: FailedTerm[], outDir: string, provider?: TtsProviderMode) {
+  if (failed.length === 0) return;
+
+  console.log(`\n❌ ${failed.length} term(s) still failed:`);
+  for (const { lang, term, error } of failed) {
+    console.log(`   • [${lang}] "${term}" — ${error}`);
+  }
+
+  const failedFile = failedTermsPath(outDir);
+  writeFailedTerms(outDir, failed);
+
+  const langSet = [...new Set(failed.map((f) => f.lang))];
+  const langFlag = langSet.length === 1 ? ` --lang ${langSet[0]}` : langSet.length === 2 ? '' : ` --lang ${langSet[0]}`;
+  const providerFlag =
+    provider && provider !== 'auto' ? ` --provider ${provider}` : ' --provider openrouter';
+
+  console.log(`\n📄 Failed terms saved to ${failedFile}`);
+  console.log('   Retry only failures:');
+  console.log(`     npm run kids:generate-audio -- --retry-failed${langFlag}${providerFlag} --force`);
+  console.log('   Or re-run the full language batch:');
+  console.log(`     npm run kids:generate-audio --${langFlag || ' --lang ar'}${providerFlag} --force`);
 }
 
 function validateEnvForLangs(langs: ('en' | 'ar')[], providerOverride?: TtsProviderMode) {
@@ -224,7 +313,9 @@ function validateEnvForLangs(langs: ('en' | 'ar')[], providerOverride?: TtsProvi
 }
 
 async function main() {
-  const { lang, provider, outDir, force, dryRun, delayMs } = parseArgs(process.argv.slice(2));
+  const { lang, provider, outDir, force, dryRun, delayMs: delayOverride, retryFailed } = parseArgs(
+    process.argv.slice(2)
+  );
   const { en, ar } = collectKidsAudioTerms();
 
   console.log(`\n🧒 Moajam Kids audio — ${en.length} EN terms, ${ar.length} AR terms\n`);
@@ -238,8 +329,17 @@ async function main() {
     return;
   }
 
-  const langs: ('en' | 'ar')[] = lang === 'all' ? ['en', 'ar'] : [lang];
+  const retryTerms = retryFailed ? loadRetryFailedTerms(outDir) : null;
+  const langs: ('en' | 'ar')[] = retryTerms
+    ? ([...new Set(retryTerms.map((t) => t.lang))] as ('en' | 'ar')[])
+    : lang === 'all'
+      ? ['en', 'ar']
+      : [lang];
+
   validateEnvForLangs(langs, provider);
+
+  const resolvedDelay = delayOverride ?? defaultDelayMs(langs, provider);
+  console.log(`   Request delay: ${resolvedDelay}ms between calls`);
 
   const { textToSpeechForKids, assertAuraEnglishVoice, getKidsEnglishTtsSpeed } = await import(
     '../src/services/ai/tts.service'
@@ -261,24 +361,78 @@ async function main() {
     }
   }
 
+  const usageUserId = await resolveUsageUserId();
+  if (!usageUserId) {
+    console.warn(
+      '⚠️  No system user for usage logs — bulk TTS will not appear in admin budget. Set AI_USAGE_SYSTEM_USER_ID or seed SUPER_ADMIN_EMAIL.'
+    );
+  } else {
+    console.log(`   Usage logs → user ${usageUserId}`);
+  }
+
   fs.mkdirSync(outDir, { recursive: true });
   const manifest: Record<string, string> = {};
+  const allFailed: FailedTerm[] = [];
+  let totalCreated = 0;
+  let totalSkipped = 0;
+
+  const termsByLang = (l: 'en' | 'ar'): string[] => {
+    if (retryTerms) {
+      return retryTerms.filter((t) => t.lang === l).map((t) => t.term);
+    }
+    return l === 'en' ? en : ar;
+  };
 
   for (const l of langs) {
-    const terms = l === 'en' ? en : ar;
+    const terms = termsByLang(l);
+    if (terms.length === 0) continue;
+
     console.log(`\n📁 ${l.toUpperCase()} → ${path.join(outDir, l)} (${terms.length} terms)\n`);
     const stats = await generateForLang(
       terms,
       l,
       provider,
       outDir,
-      force,
-      delayMs,
+      force || !!retryTerms,
+      resolvedDelay,
       manifest,
+      usageUserId,
       textToSpeechForKids
     );
-    console.log(`\n   Created: ${stats.created}, skipped: ${stats.skipped}, failed: ${stats.failed}`);
-    if (stats.failed > 0) process.exitCode = 1;
+    totalCreated += stats.created;
+    totalSkipped += stats.skipped;
+
+    let langFailed = stats.failed;
+
+    if (stats.failed.length > 0) {
+      const retryDelay = Math.max(resolvedDelay * 2, DELAY_MS_OPENROUTER);
+      console.log(`\n🔁 Second pass for ${stats.failed.length} failed [${l}] term(s) (delay ${retryDelay}ms)…`);
+      const retryStats = await generateForLang(
+        stats.failed.map((f) => f.term),
+        l,
+        provider,
+        outDir,
+        true,
+        retryDelay,
+        manifest,
+        usageUserId,
+        textToSpeechForKids,
+        `Retry pass (${l})`
+      );
+      totalCreated += retryStats.created;
+      console.log(`\n   Retry: ${retryStats.created} recovered, ${retryStats.failed.length} still failed`);
+      langFailed = retryStats.failed;
+    }
+
+    allFailed.push(...langFailed);
+    console.log(`\n   Created: ${stats.created}, skipped: ${stats.skipped}, failed: ${langFailed.length}`);
+  }
+
+  if (allFailed.length > 0) {
+    process.exitCode = 1;
+    printFailedSummary(allFailed, outDir, provider);
+  } else if (fs.existsSync(failedTermsPath(outDir))) {
+    fs.unlinkSync(failedTermsPath(outDir));
   }
 
   const manifestPath = path.join(outDir, 'manifest.json');
@@ -297,7 +451,9 @@ async function main() {
     )
   );
   console.log(`\n📋 Manifest: ${manifestPath}`);
-  console.log('✅ Done. Rebuild/deploy mujam frontend to serve static files from /audio/kids/');
+  console.log(
+    `\n✅ Done (${totalCreated} created, ${totalSkipped} skipped${allFailed.length ? `, ${allFailed.length} failed` : ''}). Rebuild/deploy mujam frontend to serve static files from /audio/kids/`
+  );
 }
 
 main().catch((e) => {

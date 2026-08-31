@@ -1,6 +1,6 @@
 import deepgram from '../../config/deepgram'
 import { openrouter } from '../../config/openrouter'
-import { logDeepgramTtsUsage, logOpenRouterTtsUsage } from './usage.service'
+import { logDeepgramTtsUsage, logOpenRouterTtsUsage, kidsTtsFeature } from './usage.service'
 
 /** Deepgram Aura TTS languages (see https://developers.deepgram.com/docs/tts-models) */
 export const DEEPGRAM_AURA_TTS_LANGUAGES = ['en', 'es', 'de', 'fr', 'nl', 'it', 'ja'] as const
@@ -113,6 +113,8 @@ export interface TTSOptions {
     model?: string
     language?: 'en' | 'ar'
     provider?: TtsProviderMode
+    /** Budget feature key, e.g. tts_kids_en */
+    feature?: string
 }
 
 export function isOpenRouterTtsConfigured(): boolean {
@@ -191,11 +193,93 @@ function openRouterInputText(text: string, lang: 'en' | 'ar', desiredSpeed?: num
     return text
 }
 
+/** Minimum raw PCM bytes — rejects empty/truncated provider streams. */
+export const OPENROUTER_TTS_MIN_PCM_BYTES = 256
+
+/** Minimum WAV file size (44-byte header + PCM payload). */
+export const OPENROUTER_TTS_MIN_WAV_BYTES = 1024
+
+export const OPENROUTER_TTS_MAX_ATTEMPTS = 5
+
+/** Backoff delays after attempts 1–4 (attempt 5 is the last try). */
+export const OPENROUTER_TTS_BACKOFF_MS = [1000, 2000, 4000, 8000] as const
+
+function sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/** HTTP 502/503/429, empty streams, and network blips are worth retrying. */
+export function isTransientOpenRouterTtsError(error: unknown): boolean {
+    const msg = error instanceof Error ? error.message : String(error)
+    return (
+        /\b502\b|\b503\b|\b429\b/.test(msg) ||
+        /empty audio/i.test(msg) ||
+        /empty stream/i.test(msg) ||
+        /InternalServerError/i.test(msg) ||
+        /rate.?limit/i.test(msg) ||
+        /ECONNRESET|ETIMEDOUT|ENOTFOUND|socket hang up/i.test(msg)
+    )
+}
+
+function validateOpenRouterPcm(pcm: Buffer): void {
+    if (pcm.length < OPENROUTER_TTS_MIN_PCM_BYTES) {
+        throw new Error(
+            `OpenRouter TTS returned empty or truncated audio (${pcm.length} bytes, min ${OPENROUTER_TTS_MIN_PCM_BYTES})`
+        )
+    }
+}
+
+function validateOpenRouterWav(buffer: Buffer): void {
+    if (buffer.length < OPENROUTER_TTS_MIN_WAV_BYTES) {
+        throw new Error(
+            `OpenRouter TTS produced invalid WAV (${buffer.length} bytes, min ${OPENROUTER_TTS_MIN_WAV_BYTES})`
+        )
+    }
+}
+
+async function openRouterTtsOnce(
+    text: string,
+    lang: 'en' | 'ar',
+    userId: string | undefined,
+    desiredSpeed: number | undefined,
+    feature: string | undefined,
+    model: string,
+    voice: string
+): Promise<TtsAudioResult> {
+    const response = await openrouter.audio.speech.create({
+        model,
+        input: openRouterInputText(text, lang, desiredSpeed),
+        voice,
+        response_format: 'pcm',
+    })
+
+    const pcm = Buffer.from(await response.arrayBuffer())
+    validateOpenRouterPcm(pcm)
+
+    const buffer = pcmToWav(pcm)
+    validateOpenRouterWav(buffer)
+
+    if (userId) {
+        await logOpenRouterTtsUsage(userId, text, model, {
+            feature,
+            outputBytes: buffer.length,
+        })
+    }
+
+    return {
+        buffer,
+        contentType: 'audio/wav',
+        provider: 'openrouter',
+        extension: 'wav',
+    }
+}
+
 async function openRouterTextToSpeech(
     text: string,
     lang: 'en' | 'ar',
     userId?: string,
-    desiredSpeed?: number
+    desiredSpeed?: number,
+    feature?: string
 ): Promise<TtsAudioResult> {
     if (!process.env.OPENROUTER_API_KEY) {
         throw new Error('TTS configuration error: OPENROUTER_API_KEY is missing')
@@ -206,43 +290,37 @@ async function openRouterTextToSpeech(
 
     console.log(`TTS (OpenRouter): Generating ${lang} audio with ${model}, voice ${voice}`)
 
-    try {
-        const response = await openrouter.audio.speech.create({
-            model,
-            input: openRouterInputText(text, lang, desiredSpeed),
-            voice,
-            response_format: 'pcm',
-        })
+    let lastError: Error | undefined
 
-        const pcm = Buffer.from(await response.arrayBuffer())
-        if (pcm.length === 0) {
-            throw new Error('OpenRouter TTS returned empty audio')
+    for (let attempt = 0; attempt < OPENROUTER_TTS_MAX_ATTEMPTS; attempt++) {
+        try {
+            return await openRouterTtsOnce(text, lang, userId, desiredSpeed, feature, model, voice)
+        } catch (error: unknown) {
+            lastError = error instanceof Error ? error : new Error(String(error))
+            const isLast = attempt >= OPENROUTER_TTS_MAX_ATTEMPTS - 1
+            if (isLast || !isTransientOpenRouterTtsError(error)) {
+                break
+            }
+            const delay =
+                OPENROUTER_TTS_BACKOFF_MS[attempt] ??
+                OPENROUTER_TTS_BACKOFF_MS[OPENROUTER_TTS_BACKOFF_MS.length - 1]
+            console.warn(
+                `OpenRouter TTS attempt ${attempt + 1}/${OPENROUTER_TTS_MAX_ATTEMPTS} failed (${lastError.message}); retrying in ${delay}ms…`
+            )
+            await sleep(delay)
         }
-
-        const buffer = pcmToWav(pcm)
-
-        if (userId) {
-            await logOpenRouterTtsUsage(userId, text, model)
-        }
-
-        return {
-            buffer,
-            contentType: 'audio/wav',
-            provider: 'openrouter',
-            extension: 'wav',
-        }
-    } catch (error: unknown) {
-        console.error('OpenRouter TTS error:', error)
-        const msg = error instanceof Error ? error.message : String(error)
-        throw new Error(`TTS failed (OpenRouter): ${msg}`)
     }
+
+    console.error('OpenRouter TTS error:', lastError)
+    throw new Error(`TTS failed (OpenRouter): ${lastError?.message ?? 'unknown error'}`)
 }
 
 async function deepgramTextToSpeech(
     text: string,
     lang: 'en' | 'ar',
     userId?: string,
-    desiredSpeed?: number
+    desiredSpeed?: number,
+    feature?: string
 ): Promise<TtsAudioResult> {
     if (!process.env.DEEPGRAM_API_KEY) {
         throw new Error('TTS configuration error: Deepgram API key is missing')
@@ -288,7 +366,11 @@ async function deepgramTextToSpeech(
         const buffer = Buffer.concat(chunks)
 
         if (userId) {
-            await logDeepgramTtsUsage(userId, text)
+            await logDeepgramTtsUsage(userId, text, {
+                feature,
+                model: voice,
+                outputBytes: buffer.length,
+            })
         }
 
         return {
@@ -315,9 +397,10 @@ export async function textToSpeech(
     speed: 'normal' | 'slow' = 'normal',
     userId?: string,
     language?: 'en' | 'ar',
-    options?: Pick<TTSOptions, 'provider' | 'speed'>
+    options?: Pick<TTSOptions, 'provider' | 'speed' | 'feature'>
 ): Promise<TtsAudioResult> {
     const numericSpeed = options?.speed ?? (speed === 'slow' ? 0.75 : undefined)
+    const feature = options?.feature
 
     if (!text || text.trim().length === 0) {
         throw new Error('TTS error: Empty text provided')
@@ -333,11 +416,11 @@ export async function textToSpeech(
             }
             throw new Error('TTS configuration error: OPENROUTER_API_KEY is missing')
         }
-        return openRouterTextToSpeech(text, detectedLang, userId, numericSpeed)
+        return openRouterTextToSpeech(text, detectedLang, userId, numericSpeed, feature)
     }
 
     try {
-        return await deepgramTextToSpeech(text, detectedLang, userId, numericSpeed)
+        return await deepgramTextToSpeech(text, detectedLang, userId, numericSpeed, feature)
     } catch (error) {
         if (
             error instanceof ArabicTtsUnsupportedError ||
@@ -347,7 +430,7 @@ export async function textToSpeech(
             throw error
         }
         console.warn('Deepgram TTS failed, falling back to OpenRouter:', error)
-        return openRouterTextToSpeech(text, detectedLang, userId, numericSpeed)
+        return openRouterTextToSpeech(text, detectedLang, userId, numericSpeed, feature)
     }
 }
 
@@ -356,10 +439,14 @@ export async function textToSpeechForKids(
     text: string,
     lang: 'en' | 'ar',
     userId?: string,
-    options?: Pick<TTSOptions, 'provider'>
+    options?: Pick<TTSOptions, 'provider'> & { bulk?: boolean }
 ): Promise<TtsAudioResult> {
     const speed = lang === 'en' ? getKidsEnglishTtsSpeed() : undefined
-    return textToSpeech(text, 'normal', userId, lang, { ...options, speed })
+    return textToSpeech(text, 'normal', userId, lang, {
+        ...options,
+        speed,
+        feature: kidsTtsFeature(options?.bulk),
+    })
 }
 
 export async function textToSpeechSlow(

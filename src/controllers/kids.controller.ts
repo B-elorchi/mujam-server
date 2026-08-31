@@ -2,6 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { textToSpeechForKids } from '../services/ai/tts.service';
+import { resolveUsageUserId } from '../services/ai/usage.service';
 
 /** In-memory TTS cache for common kids vocabulary (avoids repeat provider calls). */
 const kidsAudioCache = new Map<string, { buffer: Buffer; contentType: string }>();
@@ -322,7 +323,8 @@ export const kidsController = {
       let cached = kidsAudioCache.get(cacheKey);
 
       if (!cached) {
-        const result = await textToSpeechForKids(rawText, lang, req.userId);
+        const usageUserId = await resolveUsageUserId(req.userId);
+        const result = await textToSpeechForKids(rawText, lang, usageUserId);
         cached = { buffer: result.buffer, contentType: result.contentType };
         cacheKidsAudio(cacheKey, cached);
       }
