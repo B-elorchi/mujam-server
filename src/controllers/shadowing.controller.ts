@@ -9,22 +9,13 @@ import { trackLearningActivity } from '../utils/gamification';
 export const shadowingController = {
   getStories: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: req.userId },
-        select: { currentLevel: true },
-      });
-
-      if (!user) {
-        return errorResponse(res, 'User not found', 404);
-      }
-
       const stories = await prisma.story.findMany({
-        where: { levelId: { lte: user.currentLevel }, isActive: true },
-        orderBy: { orderIndex: 'asc' },
+        where: { isActive: true },
+        orderBy: [{ levelId: 'asc' }, { orderIndex: 'asc' }],
       });
 
       const userProgress = await prisma.userShadowingProgress.findMany({
-        where: { userId: req.userId, story: { levelId: { lte: user.currentLevel } } },
+        where: { userId: req.userId },
       });
 
       const progressMap = new Map(userProgress.map((p) => [p.storyId, p]));
