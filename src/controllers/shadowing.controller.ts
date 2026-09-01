@@ -11,7 +11,7 @@ export const shadowingController = {
     try {
       const user = await prisma.user.findUnique({
         where: { id: req.userId },
-        select: { currentLevel: true, plan: true, role: true },
+        select: { currentLevel: true },
       });
 
       if (!user) {
@@ -58,11 +58,6 @@ export const shadowingController = {
       if (!story) {
         return errorResponse(res, 'Story not found', 404);
       }
-
-      const user = await prisma.user.findUnique({
-        where: { id: req.userId },
-        select: { plan: true, role: true },
-      });
 
       const progress = await prisma.userShadowingProgress.findUnique({
         where: {
