@@ -20,6 +20,67 @@ function cacheKidsAudio(key: string, entry: { buffer: Buffer; contentType: strin
   kidsAudioCache.set(key, entry);
 }
 
+/**
+ * Serve an audio buffer with HTTP byte-range support.
+ *
+ * iOS Safari probes every <audio> source with `Range: bytes=0-1` and refuses to
+ * play when the server answers 200 with the whole body instead of 206. Chrome
+ * and Android tolerate it, which is why kids TTS (Express res.send) was silent
+ * on iOS while shadowing (MinIO/S3, full range support) played fine.
+ */
+function sendAudioWithRangeSupport(
+  req: Request,
+  res: Response,
+  buffer: Buffer,
+  contentType: string
+): void {
+  const total = buffer.length;
+
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Cache-Control', 'public, max-age=86400');
+  res.setHeader('Accept-Ranges', 'bytes');
+
+  const rangeHeader = typeof req.headers.range === 'string' ? req.headers.range.trim() : '';
+  const match = /^bytes=(\d*)-(\d*)$/.exec(rangeHeader);
+
+  if (!match) {
+    res.setHeader('Content-Length', total);
+    res.status(200).end(buffer);
+    return;
+  }
+
+  const [, rawStart, rawEnd] = match;
+  let start: number;
+  let end: number;
+
+  if (rawStart === '') {
+    // Suffix range: last N bytes.
+    const suffix = Number(rawEnd);
+    if (!Number.isFinite(suffix) || suffix <= 0) {
+      res.setHeader('Content-Range', `bytes */${total}`);
+      res.status(416).end();
+      return;
+    }
+    start = Math.max(0, total - suffix);
+    end = total - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd === '' ? total - 1 : Number(rawEnd);
+  }
+
+  if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= total) {
+    res.setHeader('Content-Range', `bytes */${total}`);
+    res.status(416).end();
+    return;
+  }
+
+  end = Math.min(end, total - 1);
+
+  res.setHeader('Content-Range', `bytes ${start}-${end}/${total}`);
+  res.setHeader('Content-Length', end - start + 1);
+  res.status(206).end(buffer.subarray(start, end + 1));
+}
+
 type ScreenRow = {
   type: string;
   orderIndex: number;
@@ -329,9 +390,7 @@ export const kidsController = {
         cacheKidsAudio(cacheKey, cached);
       }
 
-      res.setHeader('Content-Type', cached.contentType);
-      res.setHeader('Cache-Control', 'public, max-age=86400');
-      res.send(cached.buffer);
+      sendAudioWithRangeSupport(req, res, cached.buffer, cached.contentType);
     } catch (error: any) {
       console.error('Kids word audio error:', error);
       const isArabicUnsupported =
