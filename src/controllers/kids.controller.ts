@@ -1,8 +1,10 @@
 import { Request, Response } from 'express';
+import { createHash } from 'crypto';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { textToSpeechForKids } from '../services/ai/tts.service';
 import { resolveUsageUserId } from '../services/ai/usage.service';
+import { objectExists, publicUrlForKey, uploadFileAtKey } from '../config/s3';
 
 /** In-memory TTS cache for common kids vocabulary (avoids repeat provider calls). */
 const kidsAudioCache = new Map<string, { buffer: Buffer; contentType: string }>();
@@ -19,6 +21,20 @@ function cacheKidsAudio(key: string, entry: { buffer: Buffer; contentType: strin
   }
   kidsAudioCache.set(key, entry);
 }
+
+/**
+ * Deterministic MinIO key for a kids clip, so regenerating overwrites the same
+ * object instead of orphaning copies. Arabic falls back to the hash alone.
+ */
+function kidsAudioObjectKey(text: string, lang: 'en' | 'ar', extension: string): string {
+  const normalized = text.trim().toLowerCase();
+  const ascii = normalized.replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  const hash = createHash('sha1').update(`${lang}:${normalized}`).digest('hex').slice(0, 10);
+  const slug = ascii ? `${ascii}-${hash}` : hash;
+  return `kids-audio/${lang}/${slug}.${extension}`;
+}
+
+const KIDS_AUDIO_EXTENSIONS = ['mp3', 'wav'] as const;
 
 /**
  * Serve an audio buffer with HTTP byte-range support.
@@ -364,6 +380,51 @@ export const kidsController = {
     } catch (error) {
       console.error('Kids parent report error:', error);
       return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  /**
+   * Resolve a kids clip to a permanent MinIO URL, generating it on first ask.
+   *
+   * Levels and shadowing play from MinIO and work on iOS; kids audio streamed
+   * from this API did not. A static S3 object is byte-range capable and serves
+   * its first byte immediately, so the <audio> element can be primed with the
+   * URL before the tap instead of waiting on live TTS inside the gesture.
+   */
+  resolveWordAudioUrl: async (req: Request, res: Response): Promise<Response | void> => {
+    const rawText = typeof req.query.text === 'string' ? req.query.text.trim() : '';
+    const lang = req.query.lang === 'ar' ? 'ar' : 'en';
+
+    if (!rawText) {
+      return errorResponse(res, 'text query parameter is required', 400);
+    }
+    if (rawText.length > 120) {
+      return errorResponse(res, 'text too long', 400);
+    }
+
+    try {
+      for (const extension of KIDS_AUDIO_EXTENSIONS) {
+        const key = kidsAudioObjectKey(rawText, lang, extension);
+        if (await objectExists(key)) {
+          return successResponse(res, { url: publicUrlForKey(key), source: 'minio' });
+        }
+      }
+
+      const cacheKey = kidsAudioCacheKey(rawText, lang);
+      const usageUserId = await resolveUsageUserId(req.userId);
+      const result = await textToSpeechForKids(rawText, lang, usageUserId);
+
+      cacheKidsAudio(cacheKey, { buffer: result.buffer, contentType: result.contentType });
+
+      const key = kidsAudioObjectKey(rawText, lang, result.extension);
+      const { url } = await uploadFileAtKey(result.buffer, key, result.contentType);
+
+      return successResponse(res, { url, source: 'minio' });
+    } catch (error: any) {
+      // Never hard-fail the lesson: fall back to streaming from this API.
+      console.error('Kids audio URL resolve error:', error);
+      const params = new URLSearchParams({ text: rawText, lang });
+      return successResponse(res, { url: `/api/kids/audio?${params}`, source: 'stream' });
     }
   },
 

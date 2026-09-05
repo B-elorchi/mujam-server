@@ -3,6 +3,7 @@ import {
     PutObjectCommand,
     DeleteObjectCommand,
     HeadBucketCommand,
+    HeadObjectCommand,
     CreateBucketCommand,
     PutBucketPolicyCommand,
 } from '@aws-sdk/client-s3';
@@ -89,6 +90,48 @@ export const uploadFile = async (
     const url = `${endpoint}/${bucketName}/${key}`;
 
     return { url, key };
+};
+
+/** Public URL for an object key (same shape uploadFile returns). */
+export const publicUrlForKey = (key: string): string => {
+    let endpoint = process.env.MINIO_ENDPOINT || 'http://localhost:9000';
+    if (endpoint.endsWith('/')) {
+        endpoint = endpoint.slice(0, -1);
+    }
+    return `${endpoint}/${bucketName}/${key}`;
+};
+
+export const objectExists = async (key: string): Promise<boolean> => {
+    try {
+        await s3Client.send(new HeadObjectCommand({ Bucket: bucketName, Key: key }));
+        return true;
+    } catch {
+        return false;
+    }
+};
+
+/**
+ * Upload at a caller-chosen key (uploadFile generates a uuid name instead).
+ * Deterministic keys make regeneration idempotent — re-running kids TTS
+ * overwrites the same object rather than orphaning copies.
+ */
+export const uploadFileAtKey = async (
+    file: Buffer,
+    key: string,
+    contentType: string
+): Promise<{ url: string; key: string }> => {
+    await ensurePublicReadOnce();
+
+    await s3Client.send(
+        new PutObjectCommand({
+            Bucket: bucketName,
+            Key: key,
+            Body: file,
+            ContentType: contentType,
+        })
+    );
+
+    return { url: publicUrlForKey(key), key };
 };
 
 export const deleteFile = async (key: string): Promise<void> => {
