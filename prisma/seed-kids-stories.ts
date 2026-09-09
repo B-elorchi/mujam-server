@@ -42,7 +42,7 @@ function cuesFromChunks(chunks: string[], wordsPerSec = 2.2, gap = 0.25): KidsSt
 }
 
 function durationFromCues(cues: KidsStoryCue[]): number {
-  return Math.ceil((cues.at(-1)?.end ?? 0) + 1)
+  return Math.ceil((cues[cues.length - 1]?.end ?? 0) + 1)
 }
 
 function storyText(story: KidsStorySeed, lang: 'en' | 'ar'): string {
