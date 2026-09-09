@@ -199,7 +199,11 @@ function firstExistingKidsStoryGeneratedAudioUrl(id: string, lang: KidsLang): st
 
 function legacyKidsStoryAudioUrlForLang(audioUrl: string | null, lang: KidsLang): string | null {
   if (!audioUrl) return null;
-  if (!audioUrl.includes('/audio/kids/stories/')) return audioUrl;
+  if (!audioUrl.includes('/audio/kids/stories/')) {
+    // The historical single audioUrl was often Arabic narration. Do not serve it
+    // to the English player unless an explicit EN story asset exists.
+    return lang === 'ar' ? audioUrl : null;
+  }
   return audioUrl.includes(`/stories/${lang}/`) ? audioUrl : null;
 }
 
