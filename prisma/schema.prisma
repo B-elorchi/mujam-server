@@ -800,7 +800,7 @@ model KidsStory {
   summaryEn    String?
   summaryAr    String?
   coverEmoji   String   @default("📖")
-  coverUrl     String?
+  coverUrl     String   @default("/images/kids/stories/default-cover.svg")
   audioUrl     String?
   textEn       String
   textAr       String
@@ -813,8 +813,25 @@ model KidsStory {
   isActive     Boolean  @default(true)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+  pages        KidsStoryPage[]
 
   @@index([isActive, orderIndex])
+}
+
+model KidsStoryPage {
+  id         String    @id @default(uuid())
+  storyId    String
+  orderIndex Int
+  textEn     String
+  textAr     String
+  imageUrl   String?
+  icon       String?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+  story      KidsStory @relation(fields: [storyId], references: [id], onDelete: Cascade)
+
+  @@unique([storyId, orderIndex])
+  @@index([storyId, orderIndex])
 }
 
 // ─────────────────────────────────────────

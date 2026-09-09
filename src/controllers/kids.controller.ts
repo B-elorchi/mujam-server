@@ -148,6 +148,15 @@ function paramId(req: Request): string {
 
 type KidsStoryCue = { start: number; end: number; text: string };
 
+function safeKidsStoryId(id: string): string {
+  return id.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'story';
+}
+
+function kidsStoryAudioUrl(id: string, lang: 'en' | 'ar'): string {
+  const ext = lang === 'ar' ? 'wav' : 'mp3';
+  return `/audio/kids/stories/${lang}/${safeKidsStoryId(id)}.${ext}`;
+}
+
 function parseCues(raw: unknown): KidsStoryCue[] | null {
   if (!Array.isArray(raw) || raw.length === 0) return null;
   const cues: KidsStoryCue[] = [];
@@ -170,11 +179,12 @@ function mapStoryListItem(s: {
   summaryEn: string | null;
   summaryAr: string | null;
   coverEmoji: string;
-  coverUrl: string | null;
+  coverUrl: string;
   accentColor: string;
   orderIndex: number;
   durationSec: number | null;
   audioUrl: string | null;
+  pages?: unknown[];
 }) {
   return {
     id: s.id,
@@ -188,6 +198,7 @@ function mapStoryListItem(s: {
     orderIndex: s.orderIndex,
     durationSec: s.durationSec,
     hasAudio: Boolean(s.audioUrl),
+    pageCount: Array.isArray(s.pages) ? s.pages.length : undefined,
   };
 }
 
@@ -198,7 +209,7 @@ function mapStoryDetail(s: {
   summaryEn: string | null;
   summaryAr: string | null;
   coverEmoji: string;
-  coverUrl: string | null;
+  coverUrl: string;
   audioUrl: string | null;
   textEn: string;
   textAr: string;
@@ -207,6 +218,14 @@ function mapStoryDetail(s: {
   accentColor: string;
   orderIndex: number;
   durationSec: number | null;
+  pages?: {
+    id: string;
+    orderIndex: number;
+    textEn: string;
+    textAr: string;
+    imageUrl: string | null;
+    icon: string | null;
+  }[];
 }) {
   return {
     ...mapStoryListItem(s),
@@ -215,6 +234,16 @@ function mapStoryDetail(s: {
     textAr: s.textAr,
     cuesEn: parseCues(s.cuesEn),
     cuesAr: parseCues(s.cuesAr),
+    audioUrlEn: kidsStoryAudioUrl(s.id, 'en'),
+    audioUrlAr: kidsStoryAudioUrl(s.id, 'ar'),
+    pages: (s.pages ?? []).map((page) => ({
+      id: page.id,
+      orderIndex: page.orderIndex,
+      textEn: page.textEn,
+      textAr: page.textAr,
+      imageUrl: page.imageUrl,
+      icon: page.icon,
+    })),
   };
 }
 
@@ -349,6 +378,7 @@ export const kidsController = {
       const stories = await prisma.kidsStory.findMany({
         where: { isActive: true },
         orderBy: { orderIndex: 'asc' },
+        include: { pages: { select: { id: true } } },
       });
       return successResponse(res, stories.map(mapStoryListItem));
     } catch (error) {
@@ -362,6 +392,7 @@ export const kidsController = {
       const id = paramId(req);
       const story = await prisma.kidsStory.findFirst({
         where: { id, isActive: true },
+        include: { pages: { orderBy: { orderIndex: 'asc' } } },
       });
       if (!story) return errorResponse(res, 'Story not found', 404);
       return successResponse(res, mapStoryDetail(story));

@@ -3,6 +3,7 @@ import { body } from 'express-validator';
 import { adminKidsController } from '../../controllers/adminKids.controller';
 import { authMiddleware } from '../../middleware/auth';
 import { adminMiddleware } from '../../middleware/adminAuth';
+import { uploadImage } from '../../middleware/upload';
 
 const router = Router();
 
@@ -87,8 +88,8 @@ router.post(
     body('id').trim().isLength({ min: 2, max: 64 }).matches(/^[a-z0-9-]+$/),
     body('titleEn').trim().isLength({ min: 2, max: 120 }),
     body('titleAr').trim().isLength({ min: 2, max: 120 }),
-    body('textEn').trim().isLength({ min: 2 }),
-    body('textAr').trim().isLength({ min: 2 }),
+    body('textEn').optional().trim().isLength({ min: 2 }),
+    body('textAr').optional().trim().isLength({ min: 2 }),
     body('coverEmoji').optional().trim().isLength({ max: 16 }),
     body('coverUrl').optional({ nullable: true }).isString(),
     body('audioUrl').optional({ nullable: true }).isString(),
@@ -100,6 +101,12 @@ router.post(
     body('isActive').optional().isBoolean(),
     body('cuesEn').optional({ nullable: true }).isArray(),
     body('cuesAr').optional({ nullable: true }).isArray(),
+    body('pages').optional().isArray(),
+    body('pages.*.textEn').optional().trim().isLength({ min: 1 }),
+    body('pages.*.textAr').optional().trim().isLength({ min: 1 }),
+    body('pages.*.imageUrl').optional({ nullable: true }).isString(),
+    body('pages.*.icon').optional({ nullable: true }).isString(),
+    body('pages.*.orderIndex').optional().isInt({ min: 0 }),
   ],
   adminKidsController.createStory
 );
@@ -121,9 +128,17 @@ router.patch(
     body('isActive').optional().isBoolean(),
     body('cuesEn').optional({ nullable: true }).isArray(),
     body('cuesAr').optional({ nullable: true }).isArray(),
+    body('pages').optional().isArray(),
+    body('pages.*.textEn').optional().trim().isLength({ min: 1 }),
+    body('pages.*.textAr').optional().trim().isLength({ min: 1 }),
+    body('pages.*.imageUrl').optional({ nullable: true }).isString(),
+    body('pages.*.icon').optional({ nullable: true }).isString(),
+    body('pages.*.orderIndex').optional().isInt({ min: 0 }),
   ],
   adminKidsController.updateStory
 );
+router.post('/stories/:id/cover', uploadImage.single('image'), adminKidsController.uploadStoryCover);
+router.post('/stories/:id/pages/:pageId/image', uploadImage.single('image'), adminKidsController.uploadStoryPageImage);
 router.delete('/stories/:id', adminKidsController.removeStory);
 
 export default router;

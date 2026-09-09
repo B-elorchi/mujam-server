@@ -2,9 +2,11 @@ import { Request, Response } from 'express';
 import { validationResult } from 'express-validator';
 import { Prisma } from '@prisma/client';
 import prisma from '../config/database';
+import { uploadFile } from '../config/s3';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 
 const KIDS_COLORS = ['blue', 'sky', 'yellow', 'pink', 'green', 'purple', 'orange'] as const;
+const DEFAULT_KIDS_STORY_COVER = '/images/kids/stories/default-cover.svg';
 
 function paramId(req: Request, key = 'id'): string {
   const raw = req.params[key];
@@ -27,6 +29,46 @@ function parseOptionalCues(raw: unknown): Prisma.InputJsonValue | typeof Prisma.
     })
     .filter(Boolean);
   return cues as Prisma.InputJsonValue;
+}
+
+type NormalizedStoryPage = {
+  orderIndex: number;
+  textEn: string;
+  textAr: string;
+  imageUrl: string | null;
+  icon: string | null;
+};
+
+function normalizeStoryPages(raw: unknown): NormalizedStoryPage[] | null {
+  if (raw === undefined || raw === null) return null;
+  if (!Array.isArray(raw)) return [];
+  return raw
+    .map((item, index) => {
+      if (!item || typeof item !== 'object') return null;
+      const row = item as Record<string, unknown>;
+      const textEn = String(row.textEn ?? '').trim();
+      const textAr = String(row.textAr ?? '').trim();
+      if (!textEn || !textAr) return null;
+      const rawOrder = row.orderIndex;
+      const orderIndex =
+        rawOrder === undefined || rawOrder === null || rawOrder === ''
+          ? index
+          : Math.max(0, Number(rawOrder));
+      return {
+        orderIndex: Number.isFinite(orderIndex) ? orderIndex : index,
+        textEn,
+        textAr,
+        imageUrl: row.imageUrl == null ? null : String(row.imageUrl).trim() || null,
+        icon: row.icon == null ? null : String(row.icon).trim() || null,
+      };
+    })
+    .filter((page): page is NormalizedStoryPage => Boolean(page))
+    .sort((a, b) => a.orderIndex - b.orderIndex)
+    .map((page, index) => ({ ...page, orderIndex: index }));
+}
+
+function storyTextFromPages(pages: NormalizedStoryPage[], lang: 'en' | 'ar'): string {
+  return pages.map((page) => (lang === 'ar' ? page.textAr : page.textEn)).join(' ');
 }
 
 export const adminKidsController = {
@@ -303,6 +345,9 @@ export const adminKidsController = {
     try {
       const stories = await prisma.kidsStory.findMany({
         orderBy: { orderIndex: 'asc' },
+        include: {
+          pages: { orderBy: { orderIndex: 'asc' } },
+        },
       });
       return successResponse(res, stories);
     } catch (error) {
@@ -314,7 +359,10 @@ export const adminKidsController = {
   getStory: async (req: Request, res: Response): Promise<Response> => {
     try {
       const id = paramId(req);
-      const story = await prisma.kidsStory.findUnique({ where: { id } });
+      const story = await prisma.kidsStory.findUnique({
+        where: { id },
+        include: { pages: { orderBy: { orderIndex: 'asc' } } },
+      });
       if (!story) return errorResponse(res, 'Story not found', 404);
       return successResponse(res, story);
     } catch (error) {
@@ -334,11 +382,16 @@ export const adminKidsController = {
       const id = String(body.id || '').trim();
       const titleEn = String(body.titleEn || '').trim();
       const titleAr = String(body.titleAr || '').trim();
-      const textEn = String(body.textEn || '').trim();
-      const textAr = String(body.textAr || '').trim();
+      const pages = normalizeStoryPages(body.pages);
+      const textEn = pages?.length ? storyTextFromPages(pages, 'en') : String(body.textEn || '').trim();
+      const textAr = pages?.length ? storyTextFromPages(pages, 'ar') : String(body.textAr || '').trim();
+      const coverUrl = String(body.coverUrl || DEFAULT_KIDS_STORY_COVER).trim();
 
-      if (!id || !titleEn || !titleAr || !textEn || !textAr) {
-        return errorResponse(res, 'id, titles, and texts are required', 400);
+      if (!id || !titleEn || !titleAr || !textEn || !textAr || !coverUrl) {
+        return errorResponse(res, 'id, titles, coverUrl, and story text/pages are required', 400);
+      }
+      if (pages !== null && pages.length === 0) {
+        return errorResponse(res, 'pages must include textEn and textAr when provided', 400);
       }
 
       const existing = await prisma.kidsStory.findUnique({ where: { id } });
@@ -359,7 +412,7 @@ export const adminKidsController = {
           summaryEn: body.summaryEn != null ? String(body.summaryEn).trim() : null,
           summaryAr: body.summaryAr != null ? String(body.summaryAr).trim() : null,
           coverEmoji: body.coverEmoji != null ? String(body.coverEmoji).trim() || '📖' : '📖',
-          coverUrl: body.coverUrl != null ? String(body.coverUrl).trim() || null : null,
+          coverUrl,
           audioUrl: body.audioUrl != null ? String(body.audioUrl).trim() || null : null,
           textEn,
           textAr,
@@ -372,7 +425,21 @@ export const adminKidsController = {
               ? Number(body.durationSec)
               : null,
           isActive: body.isActive !== false,
+          ...(pages?.length
+            ? {
+                pages: {
+                  create: pages.map((page) => ({
+                    orderIndex: page.orderIndex,
+                    textEn: page.textEn,
+                    textAr: page.textAr,
+                    imageUrl: page.imageUrl,
+                    icon: page.icon,
+                  })),
+                },
+              }
+            : {}),
         },
+        include: { pages: { orderBy: { orderIndex: 'asc' } } },
       });
 
       return successResponse(res, story, 'Kids story created', 201);
@@ -396,10 +463,12 @@ export const adminKidsController = {
       const body = req.body as Record<string, unknown>;
       const color =
         body.accentColor !== undefined ? String(body.accentColor) : undefined;
+      const pages = normalizeStoryPages(body.pages);
+      if (pages !== null && pages.length === 0) {
+        return errorResponse(res, 'pages must include textEn and textAr when provided', 400);
+      }
 
-      const story = await prisma.kidsStory.update({
-        where: { id },
-        data: {
+      const updateData: Prisma.KidsStoryUpdateInput = {
           ...(body.titleEn !== undefined && { titleEn: String(body.titleEn).trim() }),
           ...(body.titleAr !== undefined && { titleAr: String(body.titleAr).trim() }),
           ...(body.summaryEn !== undefined && {
@@ -412,13 +481,23 @@ export const adminKidsController = {
             coverEmoji: String(body.coverEmoji).trim() || '📖',
           }),
           ...(body.coverUrl !== undefined && {
-            coverUrl: body.coverUrl == null ? null : String(body.coverUrl).trim() || null,
+            coverUrl:
+              body.coverUrl == null
+                ? DEFAULT_KIDS_STORY_COVER
+                : String(body.coverUrl).trim() || DEFAULT_KIDS_STORY_COVER,
           }),
           ...(body.audioUrl !== undefined && {
             audioUrl: body.audioUrl == null ? null : String(body.audioUrl).trim() || null,
           }),
-          ...(body.textEn !== undefined && { textEn: String(body.textEn).trim() }),
-          ...(body.textAr !== undefined && { textAr: String(body.textAr).trim() }),
+          ...(pages?.length
+            ? {
+                textEn: storyTextFromPages(pages, 'en'),
+                textAr: storyTextFromPages(pages, 'ar'),
+              }
+            : {
+                ...(body.textEn !== undefined && { textEn: String(body.textEn).trim() }),
+                ...(body.textAr !== undefined && { textAr: String(body.textAr).trim() }),
+              }),
           ...(body.cuesEn !== undefined && { cuesEn: parseOptionalCues(body.cuesEn) }),
           ...(body.cuesAr !== undefined && { cuesAr: parseOptionalCues(body.cuesAr) }),
           ...(color !== undefined && {
@@ -434,7 +513,32 @@ export const adminKidsController = {
                 : Number(body.durationSec),
           }),
           ...(body.isActive !== undefined && { isActive: Boolean(body.isActive) }),
-        },
+      };
+
+      const story = await prisma.$transaction(async (tx) => {
+        await tx.kidsStory.update({
+          where: { id },
+          data: updateData,
+        });
+        if (pages !== null) {
+          await tx.kidsStoryPage.deleteMany({ where: { storyId: id } });
+          if (pages.length > 0) {
+            await tx.kidsStoryPage.createMany({
+              data: pages.map((page) => ({
+                storyId: id,
+                orderIndex: page.orderIndex,
+                textEn: page.textEn,
+                textAr: page.textAr,
+                imageUrl: page.imageUrl,
+                icon: page.icon,
+              })),
+            });
+          }
+        }
+        return tx.kidsStory.findUnique({
+          where: { id },
+          include: { pages: { orderBy: { orderIndex: 'asc' } } },
+        });
       });
 
       return successResponse(res, story, 'Kids story updated');
@@ -449,10 +553,51 @@ export const adminKidsController = {
       const id = paramId(req);
       const existing = await prisma.kidsStory.findUnique({ where: { id } });
       if (!existing) return errorResponse(res, 'Story not found', 404);
-      await prisma.kidsStory.delete({ where: { id } });
-      return successResponse(res, null, 'Kids story deleted');
+      await prisma.kidsStory.update({ where: { id }, data: { isActive: false } });
+      return successResponse(res, null, 'Kids story deactivated');
     } catch (error) {
       console.error('Delete kids story error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  uploadStoryCover: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const id = paramId(req);
+      const existing = await prisma.kidsStory.findUnique({ where: { id } });
+      if (!existing) return errorResponse(res, 'Story not found', 404);
+      if (!req.file) return errorResponse(res, 'No image file uploaded', 400);
+
+      const { url } = await uploadFile(req.file.buffer, 'kids-stories/covers', req.file.mimetype);
+      const story = await prisma.kidsStory.update({
+        where: { id },
+        data: { coverUrl: url },
+        include: { pages: { orderBy: { orderIndex: 'asc' } } },
+      });
+
+      return successResponse(res, story, 'Kids story cover uploaded');
+    } catch (error) {
+      console.error('Upload kids story cover error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  uploadStoryPageImage: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const pageId = paramId(req, 'pageId');
+      const existing = await prisma.kidsStoryPage.findUnique({ where: { id: pageId } });
+      if (!existing) return errorResponse(res, 'Story page not found', 404);
+      if (!req.file) return errorResponse(res, 'No image file uploaded', 400);
+
+      const { url } = await uploadFile(req.file.buffer, 'kids-stories/pages', req.file.mimetype);
+      const page = await prisma.kidsStoryPage.update({
+        where: { id: pageId },
+        data: { imageUrl: url },
+      });
+
+      return successResponse(res, page, 'Kids story page image uploaded');
+    } catch (error) {
+      console.error('Upload kids story page image error:', error);
       return errorResponse(res, 'Server error', 500);
     }
   },
