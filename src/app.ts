@@ -56,6 +56,16 @@ export function buildApp(): Application {
   app.use(express.json());
   app.use(express.urlencoded({ extended: true }));
 
+  const audioUploadsDir = path.join(process.cwd(), 'uploads', 'audio');
+  app.use(
+    '/audio',
+    express.static(audioUploadsDir, {
+      setHeaders: (res) => {
+        res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+      },
+    })
+  );
+
   const openapiCandidates = [
     path.join(__dirname, 'openapi.yaml'),
     path.join(process.cwd(), 'dist', 'openapi.yaml'),

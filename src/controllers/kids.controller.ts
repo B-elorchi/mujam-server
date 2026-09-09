@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
 import { createHash } from 'crypto';
+import fs from 'fs';
+import path from 'path';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { textToSpeechForKids } from '../services/ai/tts.service';
@@ -147,14 +149,77 @@ function paramId(req: Request): string {
 }
 
 type KidsStoryCue = { start: number; end: number; text: string };
+type KidsLang = 'en' | 'ar';
 
 function safeKidsStoryId(id: string): string {
   return id.toLowerCase().replace(/[^a-z0-9-]+/g, '-').replace(/^-+|-+$/g, '') || 'story';
 }
 
-function kidsStoryAudioUrl(id: string, lang: 'en' | 'ar'): string {
-  const ext = lang === 'ar' ? 'wav' : 'mp3';
+function kidsStoryAudioUrl(id: string, lang: KidsLang, ext?: 'mp3' | 'wav'): string {
+  ext ??= lang === 'ar' ? 'wav' : 'mp3';
   return `/audio/kids/stories/${lang}/${safeKidsStoryId(id)}.${ext}`;
+}
+
+function uniqueStrings(values: Array<string | undefined>): string[] {
+  return [...new Set(values.filter((v): v is string => Boolean(v)))];
+}
+
+function kidsAudioRoots(): string[] {
+  return uniqueStrings([
+    process.env.KIDS_STORIES_AUDIO_OUT ? path.resolve(process.env.KIDS_STORIES_AUDIO_OUT) : undefined,
+    process.env.KIDS_AUDIO_OUT ? path.resolve(process.env.KIDS_AUDIO_OUT) : undefined,
+    path.resolve(process.cwd(), 'uploads/audio/kids'),
+    '/app/uploads/audio/kids',
+    path.resolve(process.cwd(), '../mujam/public/audio/kids'),
+    path.resolve(__dirname, '../../../mujam/public/audio/kids'),
+  ]);
+}
+
+function kidsStoryAudioPathForUrl(url: string, root: string): string | null {
+  const match = /^\/audio\/kids\/(.+)$/.exec(url);
+  if (!match) return null;
+  return path.join(root, ...match[1].split('/'));
+}
+
+function kidsStoryGeneratedAudioExists(url: string): boolean {
+  return kidsAudioRoots().some((root) => {
+    const filePath = kidsStoryAudioPathForUrl(url, root);
+    return filePath ? fs.existsSync(filePath) : false;
+  });
+}
+
+function kidsStoryGeneratedAudioUrls(id: string, lang: KidsLang): string[] {
+  const extensions = lang === 'ar' ? (['wav', 'mp3'] as const) : (['mp3', 'wav'] as const);
+  return extensions.map((ext) => kidsStoryAudioUrl(id, lang, ext));
+}
+
+function firstExistingKidsStoryGeneratedAudioUrl(id: string, lang: KidsLang): string | null {
+  return kidsStoryGeneratedAudioUrls(id, lang).find(kidsStoryGeneratedAudioExists) ?? null;
+}
+
+function legacyKidsStoryAudioUrlForLang(audioUrl: string | null, lang: KidsLang): string | null {
+  if (!audioUrl) return null;
+  if (!audioUrl.includes('/audio/kids/stories/')) return audioUrl;
+  return audioUrl.includes(`/stories/${lang}/`) ? audioUrl : null;
+}
+
+function kidsStoryAudioUrlForLang(
+  story: { id: string; audioUrl: string | null },
+  lang: KidsLang
+): string | null {
+  return firstExistingKidsStoryGeneratedAudioUrl(story.id, lang) ?? legacyKidsStoryAudioUrlForLang(story.audioUrl, lang);
+}
+
+function kidsStoryHasAudio(story: { id: string; audioUrl: string | null }): boolean {
+  return (
+    Boolean(story.audioUrl) ||
+    Boolean(firstExistingKidsStoryGeneratedAudioUrl(story.id, 'en')) ||
+    Boolean(firstExistingKidsStoryGeneratedAudioUrl(story.id, 'ar'))
+  );
+}
+
+function requestedKidsLang(req: Request): KidsLang {
+  return req.query.lang === 'ar' ? 'ar' : 'en';
 }
 
 function parseCues(raw: unknown): KidsStoryCue[] | null {
@@ -185,7 +250,10 @@ function mapStoryListItem(s: {
   durationSec: number | null;
   audioUrl: string | null;
   pages?: unknown[];
-}) {
+}, lang: KidsLang = 'en') {
+  const audioUrlEn = kidsStoryAudioUrlForLang(s, 'en');
+  const audioUrlAr = kidsStoryAudioUrlForLang(s, 'ar');
+
   return {
     id: s.id,
     titleEn: s.titleEn,
@@ -197,7 +265,10 @@ function mapStoryListItem(s: {
     accentColor: s.accentColor,
     orderIndex: s.orderIndex,
     durationSec: s.durationSec,
-    hasAudio: Boolean(s.audioUrl),
+    audioUrl: lang === 'ar' ? audioUrlAr : audioUrlEn,
+    audioUrlEn,
+    audioUrlAr,
+    hasAudio: kidsStoryHasAudio(s),
     pageCount: Array.isArray(s.pages) ? s.pages.length : undefined,
   };
 }
@@ -226,16 +297,13 @@ function mapStoryDetail(s: {
     imageUrl: string | null;
     icon: string | null;
   }[];
-}) {
+}, lang: KidsLang = 'en') {
   return {
-    ...mapStoryListItem(s),
-    audioUrl: s.audioUrl,
+    ...mapStoryListItem(s, lang),
     textEn: s.textEn,
     textAr: s.textAr,
     cuesEn: parseCues(s.cuesEn),
     cuesAr: parseCues(s.cuesAr),
-    audioUrlEn: kidsStoryAudioUrl(s.id, 'en'),
-    audioUrlAr: kidsStoryAudioUrl(s.id, 'ar'),
     pages: (s.pages ?? []).map((page) => ({
       id: page.id,
       orderIndex: page.orderIndex,
@@ -373,14 +441,15 @@ export const kidsController = {
     }
   },
 
-  listStories: async (_req: Request, res: Response): Promise<Response> => {
+  listStories: async (req: Request, res: Response): Promise<Response> => {
     try {
       const stories = await prisma.kidsStory.findMany({
         where: { isActive: true },
         orderBy: { orderIndex: 'asc' },
         include: { pages: { select: { id: true } } },
       });
-      return successResponse(res, stories.map(mapStoryListItem));
+      const lang = requestedKidsLang(req);
+      return successResponse(res, stories.map((story) => mapStoryListItem(story, lang)));
     } catch (error) {
       console.error('List kids stories error:', error);
       return errorResponse(res, 'Server error', 500);
@@ -395,7 +464,7 @@ export const kidsController = {
         include: { pages: { orderBy: { orderIndex: 'asc' } } },
       });
       if (!story) return errorResponse(res, 'Story not found', 404);
-      return successResponse(res, mapStoryDetail(story));
+      return successResponse(res, mapStoryDetail(story, requestedKidsLang(req)));
     } catch (error) {
       console.error('Get kids story error:', error);
       return errorResponse(res, 'Server error', 500);
