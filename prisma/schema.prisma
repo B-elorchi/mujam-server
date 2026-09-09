@@ -122,6 +122,8 @@ model User {
   accessMoajam      Boolean          @default(true)
   /// Moajam Kids space access
   accessKids        Boolean          @default(false)
+  /// Kids intro carousel has been completed by this user
+  kidsOnboardingCompleted Boolean    @default(false)
   /// Optional parent email (when kids access) — parent account with this email can view progress
   parentEmail       String?
   lastActiveAt      DateTime         @default(now())

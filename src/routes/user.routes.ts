@@ -11,7 +11,10 @@ router.get('/profile', authMiddleware, userController.getProfile);
 router.patch(
   '/profile',
   authMiddleware,
-  [body('name').optional().trim().notEmpty().withMessage('Name cannot be empty')],
+  [
+    body('name').optional().trim().notEmpty().withMessage('Name cannot be empty'),
+    body('kidsOnboardingCompleted').optional().isBoolean().withMessage('kidsOnboardingCompleted must be a boolean'),
+  ],
   userController.updateProfile
 );
 

@@ -37,6 +37,10 @@ export const userController = {
         currentLevel: user.currentLevel,
         emailVerified: user.emailVerified,
         createdAt: user.createdAt,
+        accessMoajam: user.accessMoajam,
+        accessKids: user.accessKids,
+        kidsOnboardingCompleted: user.kidsOnboardingCompleted,
+        parentEmail: user.parentEmail,
         streak: user.streak,
         stats: {
           sentencesLearned: user._count.sentenceProgress,
@@ -58,21 +62,28 @@ export const userController = {
         return errorResponse(res, errors.array()[0].msg, 400);
       }
 
-      const { name, avatarUrl } = req.body;
+      const { name, avatarUrl, kidsOnboardingCompleted } = req.body;
 
       const updatedUser = await prisma.user.update({
         where: { id: (req as any).userId },
         data: {
           ...(name && { name }),
           ...(avatarUrl && { avatarUrl }),
+          ...(typeof kidsOnboardingCompleted === 'boolean' && { kidsOnboardingCompleted }),
         },
         select: {
           id: true,
           name: true,
           email: true,
           avatarUrl: true,
+          role: true,
           currentLevel: true,
           plan: true,
+          emailVerified: true,
+          accessMoajam: true,
+          accessKids: true,
+          kidsOnboardingCompleted: true,
+          parentEmail: true,
         },
       });
 
