@@ -11,6 +11,9 @@ router.get('/modules', optionalAuth, kidsController.listModules);
 router.get('/modules/:id', optionalAuth, kidsController.getModule);
 router.get('/modules/:id/lesson', optionalAuth, kidsController.getLesson);
 
+router.get('/stories', optionalAuth, kidsController.listStories);
+router.get('/stories/:id', optionalAuth, kidsController.getStory);
+
 /** Mark a lesson complete (auth + accessKids) */
 router.post('/modules/:id/complete', authMiddleware, kidsController.completeLesson);
 

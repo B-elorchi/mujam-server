@@ -28,6 +28,7 @@ import engagementRoutes from './routes/engagement.routes';
 import newsBannerRoutes from './routes/newsBanner.routes';
 import kidsRoutes from './routes/kids.routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
+import { getAllowedBrowserOrigins } from './utils/frontendOrigins';
 
 /**
  * Creates the Express application (no listen). Used by server.ts and automated tests.
@@ -39,14 +40,7 @@ export function buildApp(): Application {
   app.set('trust proxy', 1);
 
   app.use(helmet());
-  const allowedOrigins = [
-    ...(process.env.FRONTEND_URL ||
-      'https://app.moajam-sa.com,http://localhost:3000,http://localhost:3001,http://localhost:8080')
-      .split(',')
-      .map((o) => o.trim())
-      .filter(Boolean),
-    ...(process.env.CORS_EXTRA_ORIGINS || '').split(',').map((o) => o.trim()).filter(Boolean),
-  ];
+  const allowedOrigins = getAllowedBrowserOrigins();
   app.use(
     cors({
       origin: (origin, cb) => {

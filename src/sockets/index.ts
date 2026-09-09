@@ -4,16 +4,12 @@ import { createAdapter } from '@socket.io/redis-adapter';
 import { getRedisPublisher, createRedisSubscriber } from '../config/redis';
 import { verifyAccessToken } from '../utils/jwt';
 import { registerCommunitySocket } from './community.socket';
+import { getAllowedBrowserOrigins } from '../utils/frontendOrigins';
 
 let io: SocketIOServer | null = null;
 
 export function initSockets(httpServer: HttpServer): SocketIOServer {
-  const allowedOrigins = (
-    process.env.FRONTEND_URL ||
-    'https://app.moajam-sa.com,http://localhost:3000,http://localhost:3001,http://localhost:8080'
-  )
-    .split(',')
-    .map((o) => o.trim());
+  const allowedOrigins = getAllowedBrowserOrigins();
 
   io = new SocketIOServer(httpServer, {
     cors: { origin: allowedOrigins, credentials: true },

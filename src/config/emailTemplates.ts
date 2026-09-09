@@ -10,10 +10,9 @@
  *   navy #1A2648 · soft surface #F3F5F9 · gold #C9A227 · CTA blue #24408E · text #1E293B
  */
 
-export const getFrontendBaseUrl = (): string => {
-  const raw = process.env.FRONTEND_URL || 'https://app.moajam-sa.com';
-  return raw.split(',')[0].trim().replace(/\/$/, '');
-};
+import { getKidsFrontendBaseUrl, getMenFrontendBaseUrl } from '../utils/frontendOrigins';
+
+export const getFrontendBaseUrl = (): string => getMenFrontendBaseUrl();
 
 /** Absolute HTTPS/HTTP URL to the logo used in email headers. */
 export const getEmailLogoUrl = (): string =>
@@ -250,7 +249,7 @@ export const parentProgressInviteEmailHtml = (
   childEmail: string,
   childName?: string
 ): string => {
-  const frontendUrl = getFrontendBaseUrl();
+  const frontendUrl = getKidsFrontendBaseUrl();
   const parentLink = `${frontendUrl}/kids/parent`;
   const loginLink = `${frontendUrl}/login`;
   const label = escapeHtml(childName || childEmail);

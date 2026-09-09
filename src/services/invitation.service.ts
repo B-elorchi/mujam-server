@@ -1,6 +1,7 @@
 import { InviteAccess } from '@prisma/client';
 import prisma from '../config/database';
 import { generateSecureToken, hashToken } from '../utils/hash';
+import { buildInvitationLink } from '../utils/frontendOrigins';
 
 export const INVITE_EXPIRY_DAYS = 7;
 
@@ -162,8 +163,7 @@ export async function createUserInvitation(input: CreateInvitationInput) {
     },
   });
 
-  const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:5173').replace(/\/$/, '');
-  const invitationLink = `${frontendUrl}/register?token=${encodeURIComponent(rawToken)}`;
+  const invitationLink = buildInvitationLink(rawToken, access);
 
   return {
     invitation,

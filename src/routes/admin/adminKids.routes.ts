@@ -79,4 +79,51 @@ router.patch(
 
 router.delete('/screens/:id', adminKidsController.removeScreen);
 
+router.get('/stories', adminKidsController.listStories);
+router.get('/stories/:id', adminKidsController.getStory);
+router.post(
+  '/stories',
+  [
+    body('id').trim().isLength({ min: 2, max: 64 }).matches(/^[a-z0-9-]+$/),
+    body('titleEn').trim().isLength({ min: 2, max: 120 }),
+    body('titleAr').trim().isLength({ min: 2, max: 120 }),
+    body('textEn').trim().isLength({ min: 2 }),
+    body('textAr').trim().isLength({ min: 2 }),
+    body('coverEmoji').optional().trim().isLength({ max: 16 }),
+    body('coverUrl').optional({ nullable: true }).isString(),
+    body('audioUrl').optional({ nullable: true }).isString(),
+    body('summaryEn').optional({ nullable: true }).isString(),
+    body('summaryAr').optional({ nullable: true }).isString(),
+    body('accentColor').optional().isIn(['blue', 'sky', 'yellow', 'pink', 'green', 'purple', 'orange']),
+    body('orderIndex').optional().isInt({ min: 0 }),
+    body('durationSec').optional({ nullable: true }).isInt({ min: 1 }),
+    body('isActive').optional().isBoolean(),
+    body('cuesEn').optional({ nullable: true }).isArray(),
+    body('cuesAr').optional({ nullable: true }).isArray(),
+  ],
+  adminKidsController.createStory
+);
+router.patch(
+  '/stories/:id',
+  [
+    body('titleEn').optional().trim().isLength({ min: 2, max: 120 }),
+    body('titleAr').optional().trim().isLength({ min: 2, max: 120 }),
+    body('textEn').optional().trim().isLength({ min: 2 }),
+    body('textAr').optional().trim().isLength({ min: 2 }),
+    body('coverEmoji').optional().trim().isLength({ max: 16 }),
+    body('coverUrl').optional({ nullable: true }).isString(),
+    body('audioUrl').optional({ nullable: true }).isString(),
+    body('summaryEn').optional({ nullable: true }).isString(),
+    body('summaryAr').optional({ nullable: true }).isString(),
+    body('accentColor').optional().isIn(['blue', 'sky', 'yellow', 'pink', 'green', 'purple', 'orange']),
+    body('orderIndex').optional().isInt({ min: 0 }),
+    body('durationSec').optional({ nullable: true }).isInt({ min: 1 }),
+    body('isActive').optional().isBoolean(),
+    body('cuesEn').optional({ nullable: true }).isArray(),
+    body('cuesAr').optional({ nullable: true }).isArray(),
+  ],
+  adminKidsController.updateStory
+);
+router.delete('/stories/:id', adminKidsController.removeStory);
+
 export default router;

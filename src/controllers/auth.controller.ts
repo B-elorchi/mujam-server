@@ -15,6 +15,7 @@ import {
 } from '../services/invitation.service';
 import { sendParentProgressInviteEmail } from '../config/email';
 import { isPublicSignupAllowed, publicSignupAccessFlags } from '../utils/publicSignup';
+import { getMenFrontendBaseUrl, pickFrontendOrigin } from '../utils/frontendOrigins';
 
 export const authController = {
   /** Public: whether open registration is enabled (for UI CTAs). */
@@ -515,8 +516,8 @@ export const authController = {
         },
       });
 
-      // Use first frontend URL if multiple are configured
-      const frontendUrl = (process.env.FRONTEND_URL || 'http://localhost:8080').split(',')[0].trim();
+      const frontendUrl =
+        pickFrontendOrigin(req.headers.origin) || getMenFrontendBaseUrl();
       const resetLink = `${frontendUrl}/reset-password?token=${resetToken}`;
 
       try {

@@ -792,6 +792,31 @@ model KidsLessonScreen {
   @@index([moduleId])
 }
 
+// Kids bedtime / listen-along stories (separate from adult shadowing Story)
+model KidsStory {
+  id           String   @id // slug e.g. "luna-moon"
+  titleEn      String
+  titleAr      String
+  summaryEn    String?
+  summaryAr    String?
+  coverEmoji   String   @default("📖")
+  coverUrl     String?
+  audioUrl     String?
+  textEn       String
+  textAr       String
+  /// Timed cues: [{ start: number, end: number, text: string }] — optional; enables sync
+  cuesEn       Json?
+  cuesAr       Json?
+  accentColor  String   @default("sky") // blue|sky|yellow|pink|green|purple|orange
+  orderIndex   Int      @unique
+  durationSec  Int?
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([isActive, orderIndex])
+}
+
 // ─────────────────────────────────────────
 // BLOG
 // ─────────────────────────────────────────

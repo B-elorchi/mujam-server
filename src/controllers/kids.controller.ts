@@ -146,6 +146,78 @@ function paramId(req: Request): string {
   return Array.isArray(raw) ? raw[0] : raw;
 }
 
+type KidsStoryCue = { start: number; end: number; text: string };
+
+function parseCues(raw: unknown): KidsStoryCue[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const cues: KidsStoryCue[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue;
+    const row = item as Record<string, unknown>;
+    const start = typeof row.start === 'number' ? row.start : Number(row.start);
+    const end = typeof row.end === 'number' ? row.end : Number(row.end);
+    const text = typeof row.text === 'string' ? row.text.trim() : '';
+    if (!Number.isFinite(start) || !Number.isFinite(end) || !text) continue;
+    cues.push({ start, end, text });
+  }
+  return cues.length > 0 ? cues : null;
+}
+
+function mapStoryListItem(s: {
+  id: string;
+  titleEn: string;
+  titleAr: string;
+  summaryEn: string | null;
+  summaryAr: string | null;
+  coverEmoji: string;
+  coverUrl: string | null;
+  accentColor: string;
+  orderIndex: number;
+  durationSec: number | null;
+  audioUrl: string | null;
+}) {
+  return {
+    id: s.id,
+    titleEn: s.titleEn,
+    titleAr: s.titleAr,
+    summaryEn: s.summaryEn,
+    summaryAr: s.summaryAr,
+    coverEmoji: s.coverEmoji,
+    coverUrl: s.coverUrl,
+    accentColor: s.accentColor,
+    orderIndex: s.orderIndex,
+    durationSec: s.durationSec,
+    hasAudio: Boolean(s.audioUrl),
+  };
+}
+
+function mapStoryDetail(s: {
+  id: string;
+  titleEn: string;
+  titleAr: string;
+  summaryEn: string | null;
+  summaryAr: string | null;
+  coverEmoji: string;
+  coverUrl: string | null;
+  audioUrl: string | null;
+  textEn: string;
+  textAr: string;
+  cuesEn: unknown;
+  cuesAr: unknown;
+  accentColor: string;
+  orderIndex: number;
+  durationSec: number | null;
+}) {
+  return {
+    ...mapStoryListItem(s),
+    audioUrl: s.audioUrl,
+    textEn: s.textEn,
+    textAr: s.textAr,
+    cuesEn: parseCues(s.cuesEn),
+    cuesAr: parseCues(s.cuesAr),
+  };
+}
+
 function weekKeyFromDate(d = new Date()): string {
   const onejan = new Date(d.getFullYear(), 0, 1);
   const week = Math.ceil(((d.getTime() - onejan.getTime()) / 86400000 + onejan.getDay() + 1) / 7);
@@ -268,6 +340,33 @@ export const kidsController = {
       });
     } catch (error) {
       console.error('Get kids lesson error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  listStories: async (_req: Request, res: Response): Promise<Response> => {
+    try {
+      const stories = await prisma.kidsStory.findMany({
+        where: { isActive: true },
+        orderBy: { orderIndex: 'asc' },
+      });
+      return successResponse(res, stories.map(mapStoryListItem));
+    } catch (error) {
+      console.error('List kids stories error:', error);
+      return errorResponse(res, 'Server error', 500);
+    }
+  },
+
+  getStory: async (req: Request, res: Response): Promise<Response> => {
+    try {
+      const id = paramId(req);
+      const story = await prisma.kidsStory.findFirst({
+        where: { id, isActive: true },
+      });
+      if (!story) return errorResponse(res, 'Story not found', 404);
+      return successResponse(res, mapStoryDetail(story));
+    } catch (error) {
+      console.error('Get kids story error:', error);
       return errorResponse(res, 'Server error', 500);
     }
   },

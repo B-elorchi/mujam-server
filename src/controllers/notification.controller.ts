@@ -3,11 +3,10 @@ import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { getPagination } from '../utils/pagination';
 import { createRedisSubscriber, isRedisEnabled } from '../config/redis';
+import { getAllowedBrowserOrigins } from '../utils/frontendOrigins';
 
 function applySseCors(req: Request, res: Response): void {
-  const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3000,http://localhost:8080')
-    .split(',')
-    .map((o) => o.trim());
+  const allowedOrigins = getAllowedBrowserOrigins();
   const origin = req.headers.origin;
   if (origin && allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
