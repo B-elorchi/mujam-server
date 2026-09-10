@@ -211,7 +211,11 @@ function kidsStoryAudioUrlForLang(
   story: { id: string; audioUrl: string | null },
   lang: KidsLang
 ): string | null {
-  return firstExistingKidsStoryGeneratedAudioUrl(story.id, lang) ?? legacyKidsStoryAudioUrlForLang(story.audioUrl, lang);
+  return (
+    firstExistingKidsStoryGeneratedAudioUrl(story.id, lang) ??
+    kidsStoryGeneratedAudioUrls(story.id, lang)[0] ??
+    legacyKidsStoryAudioUrlForLang(story.audioUrl, lang)
+  );
 }
 
 function kidsStoryHasAudio(story: { id: string; audioUrl: string | null }): boolean {
