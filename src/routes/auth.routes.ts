@@ -43,12 +43,7 @@ router.post(
 
 router.post('/logout', authMiddleware, authController.logout);
 
-router.post(
-  '/refresh',
-  authLimiter,
-  [body('refreshToken').notEmpty().withMessage('Refresh token is required')],
-  authController.refresh
-);
+router.post('/refresh', authLimiter, authController.refresh);
 
 router.post(
   '/verify-email',

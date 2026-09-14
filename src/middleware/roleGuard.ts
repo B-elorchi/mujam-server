@@ -2,6 +2,32 @@ import { Request, Response, NextFunction } from 'express';
 import prisma from '../config/database';
 import { errorResponse } from '../utils/apiResponse';
 
+const STAFF_ROLES = new Set(['ADMIN', 'EDITOR', 'AI_MANAGER', 'MARKETER']);
+
+/** Adult Moajam learner APIs. Kids-only accounts are blocked; staff always pass. */
+export const moajamAccessGuard = (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): void => {
+  if (!req.userId) {
+    errorResponse(res, 'Authentication required', 401);
+    return;
+  }
+
+  if (req.user && STAFF_ROLES.has(req.user.role)) {
+    next();
+    return;
+  }
+
+  if (req.accessMoajam === false) {
+    errorResponse(res, 'Moajam access required', 403);
+    return;
+  }
+
+  next();
+};
+
 /** Allow PREMIUM plan or ADMIN role to access premium-only features */
 export const planGuard = (requiredPlan: 'PREMIUM') => {
   return async (req: Request, res: Response, next: NextFunction): Promise<void> => {

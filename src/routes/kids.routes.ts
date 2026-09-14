@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import { kidsController } from '../controllers/kids.controller';
-import { authMiddleware, optionalAuth } from '../middleware/auth';
+import { authMiddleware, optionalAuth, cookieOrBearerAuth } from '../middleware/auth';
+import { kidsAudioLimiter } from '../middleware/rateLimiter';
 
 const router = Router();
 
-/** Public kids course catalog (optional auth overlays per-child progress) */
-router.get('/audio/url', optionalAuth, kidsController.resolveWordAudioUrl);
-router.get('/audio', optionalAuth, kidsController.getWordAudio);
+/** TTS generation requires a logged-in user (catalog stays public). */
+router.get('/audio/url', cookieOrBearerAuth, kidsAudioLimiter, kidsController.resolveWordAudioUrl);
+router.get('/audio', cookieOrBearerAuth, kidsAudioLimiter, kidsController.getWordAudio);
 router.get('/modules', optionalAuth, kidsController.listModules);
 router.get('/modules/:id', optionalAuth, kidsController.getModule);
 router.get('/modules/:id/lesson', optionalAuth, kidsController.getLesson);

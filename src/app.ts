@@ -73,10 +73,12 @@ export function buildApp(): Application {
     path.join(process.cwd(), 'openapi.yaml'),
   ];
   const openapiPath = openapiCandidates.find((p) => fs.existsSync(p));
-  if (openapiPath) {
+  const enableDocs =
+    process.env.ENABLE_API_DOCS === 'true' || process.env.NODE_ENV !== 'production';
+  if (openapiPath && enableDocs) {
     const openapiSpec = YAML.parse(fs.readFileSync(openapiPath, 'utf8'));
     app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openapiSpec));
-  } else {
+  } else if (enableDocs) {
     console.warn(
       'openapi.yaml not found — /api-docs disabled. Looked in:',
       openapiCandidates.join(', ')

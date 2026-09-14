@@ -1530,8 +1530,13 @@ async function seedGames() {
 async function seedSuperAdmin() {
   console.log('👑 Seeding super admin...')
 
-  const adminEmail = process.env.SUPER_ADMIN_EMAIL || 'admin@mujam.com'
-  const adminPassword = process.env.SUPER_ADMIN_PASSWORD || 'changeme_immediately_123!'
+  const adminEmail = process.env.SUPER_ADMIN_EMAIL
+  const adminPassword = process.env.SUPER_ADMIN_PASSWORD
+
+  if (!adminEmail || !adminPassword) {
+    console.log('  ⚠ SUPER_ADMIN_EMAIL / SUPER_ADMIN_PASSWORD not set — skipping admin seed')
+    return
+  }
 
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } })
   if (existing) {

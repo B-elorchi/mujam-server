@@ -16,6 +16,7 @@ import {
 import { sendParentProgressInviteEmail } from '../config/email';
 import { isPublicSignupAllowed, publicSignupAccessFlags } from '../utils/publicSignup';
 import { getMenFrontendBaseUrl, pickFrontendOrigin } from '../utils/frontendOrigins';
+import { clearAuthCookies, readRefreshCookie, setAuthCookies } from '../utils/authCookies';
 
 export const authController = {
   /** Public: whether open registration is enabled (for UI CTAs). */
@@ -104,6 +105,8 @@ export const authController = {
             expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
           },
         });
+
+        setAuthCookies(res, { accessToken, refreshToken });
 
         return successResponse(
           res,
@@ -216,6 +219,8 @@ export const authController = {
         },
       });
 
+      setAuthCookies(res, { accessToken, refreshToken });
+
       return successResponse(
         res,
         {
@@ -279,6 +284,8 @@ export const authController = {
         },
       });
 
+      setAuthCookies(res, { accessToken, refreshToken });
+
       return successResponse(
         res,
         {
@@ -309,7 +316,7 @@ export const authController = {
 
   logout: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const { refreshToken } = req.body;
+      const refreshToken = (req.body?.refreshToken as string | undefined) || readRefreshCookie(req);
 
       if (refreshToken) {
         await prisma.refreshToken.updateMany({
@@ -318,6 +325,7 @@ export const authController = {
         });
       }
 
+      clearAuthCookies(res);
       return successResponse(res, null, 'Logout successful');
     } catch (error) {
       console.error('Logout error:', error);
@@ -327,12 +335,13 @@ export const authController = {
 
   refresh: async (req: Request, res: Response): Promise<Response> => {
     try {
-      const errors = validationResult(req);
-      if (!errors.isEmpty()) {
-        return errorResponse(res, errors.array()[0].msg, 400);
-      }
+      const refreshToken =
+        (typeof req.body?.refreshToken === 'string' && req.body.refreshToken) ||
+        readRefreshCookie(req);
 
-      const { refreshToken } = req.body;
+      if (!refreshToken) {
+        return errorResponse(res, 'Invalid refresh token', 401);
+      }
 
       const tokenRecord = await prisma.refreshToken.findUnique({
         where: { token: refreshToken },
@@ -368,6 +377,8 @@ export const authController = {
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
+
+      setAuthCookies(res, { accessToken: newAccessToken, refreshToken: newRefreshToken });
 
       return successResponse(
         res,
@@ -435,6 +446,8 @@ export const authController = {
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
+
+      setAuthCookies(res, { accessToken, refreshToken });
 
       return successResponse(
         res,

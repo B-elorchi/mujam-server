@@ -5,8 +5,8 @@ import { getPagination } from '../utils/pagination';
 import { checkLevelCompletion } from '../utils/progress.utils';
 import { trackLearningActivity } from '../utils/gamification';
 
-function hasPremiumAccess(..._args: unknown[]): boolean {
-  return true;
+function hasPremiumAccess(plan?: string, role?: string): boolean {
+  return plan === 'PREMIUM' || role === 'ADMIN';
 }
 
 export const levelController = {
@@ -36,7 +36,7 @@ export const levelController = {
         },
       });
 
-      const premiumOk = user ? hasPremiumAccess() : false;
+      const premiumOk = user ? hasPremiumAccess(user.plan, user.role) : false;
 
       const levelsWithProgress = await Promise.all(
         levels.map(async (level) => {
@@ -118,7 +118,7 @@ export const levelController = {
         return errorResponse(res, 'User not found', 404);
       }
 
-      const premiumOk = hasPremiumAccess();
+      const premiumOk = hasPremiumAccess(user.plan, user.role);
       const isLocked = !level.isFree && !premiumOk;
 
       const nextLevel = await prisma.level.findFirst({

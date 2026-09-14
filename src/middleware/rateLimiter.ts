@@ -19,6 +19,22 @@ export const authLimiter = rateLimit({
   legacyHeaders: false,
 });
 
+export const aiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isTest ? 100_000 : 40,
+  message: { success: false, message: 'Too many AI requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+export const kidsAudioLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isTest ? 100_000 : 60,
+  message: { success: false, message: 'Too many audio requests, please try again later' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: isTest ? 100_000 : 20,

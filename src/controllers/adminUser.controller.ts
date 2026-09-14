@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import prisma from '../config/database';
 import { successResponse, errorResponse } from '../utils/apiResponse';
 import { getPagination } from '../utils/pagination';
-import { hashPassword } from '../utils/hash';
+import { hashPassword, generateSecureToken } from '../utils/hash';
 import {
   accessFlagsFromInvite,
   normalizeInviteEmail,
@@ -330,7 +330,7 @@ export const adminUserController = {
     try {
       const { email, role } = req.body;
 
-      const token = Math.random().toString(36).substring(2) + Date.now().toString(36);
+      const token = generateSecureToken();
       const expiresAt = new Date();
       expiresAt.setDate(expiresAt.getDate() + 7);
 

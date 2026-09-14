@@ -15,18 +15,14 @@ export const generateRandomCode = (length: number = 6): string => {
   const digits = '0123456789';
   let code = '';
   for (let i = 0; i < length; i++) {
-    code += digits[Math.floor(Math.random() * digits.length)];
+    code += digits[crypto.randomInt(digits.length)];
   }
   return code;
 };
 
 export const generateRandomToken = (length: number = 32): string => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let token = '';
-  for (let i = 0; i < length; i++) {
-    token += chars[Math.floor(Math.random() * chars.length)];
-  }
-  return token;
+  const bytes = crypto.randomBytes(Math.max(32, length));
+  return bytes.toString('base64url').slice(0, length);
 };
 
 /** Cryptographically strong invite token (URL-safe). */

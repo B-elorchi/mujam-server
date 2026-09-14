@@ -2,9 +2,11 @@ import { Request, Response, NextFunction } from 'express';
 import { verifyAccessToken } from '../utils/jwt';
 import prisma from '../config/database';
 import { errorResponse } from '../utils/apiResponse';
+import { readAccessCookie } from '../utils/authCookies';
 
 /**
- * Authenticates SSE clients: Bearer header or `?token=` (EventSource cannot set custom headers in the browser).
+ * Authenticates SSE clients: Bearer header, HttpOnly access cookie, or short-lived
+ * query token (legacy EventSource clients that cannot send headers).
  */
 export async function sseAuthMiddleware(
   req: Request,
@@ -17,7 +19,7 @@ export async function sseAuthMiddleware(
     const bearer = req.headers.authorization?.startsWith('Bearer ')
       ? req.headers.authorization.split(' ')[1]
       : undefined;
-    const jwt = tokenFromQuery || bearer;
+    const jwt = bearer || readAccessCookie(req) || tokenFromQuery;
     if (!jwt) {
       errorResponse(res, 'No token provided', 401);
       return;

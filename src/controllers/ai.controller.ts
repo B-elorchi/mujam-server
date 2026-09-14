@@ -51,7 +51,13 @@ export const aiController = {
       }
 
       // AI is temporarily open for all users.
-      const sessionLimit = 999999;
+      const privileged = user.role === 'ADMIN' || user.plan === 'PREMIUM';
+      const configured = Number(process.env.AI_MONTHLY_SESSION_LIMIT);
+      const sessionLimit = Number.isFinite(configured) && configured > 0
+        ? configured
+        : privileged
+          ? 200
+          : 30;
 
       const monthStart = new Date();
       monthStart.setDate(1);
@@ -132,7 +138,7 @@ export const aiController = {
         include: { scenario: true },
       });
 
-      if (!session) {
+      if (!session || session.userId !== req.userId) {
         sendEvent('error', { message: 'Session not found' });
         res.end();
         return;
@@ -348,7 +354,7 @@ export const aiController = {
         where: { id: id as string },
         include: { scenario: true },
       });
-      if (!session) return errorResponse(res, 'Session not found', 404);
+      if (!session || session.userId !== req.userId) return errorResponse(res, 'Session not found', 404);
       return successResponse(res, session);
     } catch (error) {
       console.error('Get session error:', error);

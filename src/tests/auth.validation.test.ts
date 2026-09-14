@@ -25,7 +25,7 @@ describe('Auth validation (no DB)', () => {
 
   it('POST /api/auth/refresh rejects empty body', async () => {
     const res = await request(app).post('/api/auth/refresh').send({});
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(401);
     expect(res.body.success).toBe(false);
   });
 });
